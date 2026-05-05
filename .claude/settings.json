@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm init *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm dev *)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(sleep 15 && cat /tmp/next-dev.log)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -s http://localhost:3001)",
+      "Bash(kill 86539)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git -C /Users/gongqipeng/Desktop/scheduler log --oneline)",
+      "Bash(git commit *)"
+    ]
+  }
+}
