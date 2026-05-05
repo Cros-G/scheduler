@@ -17,6 +17,33 @@ export default async function LoginPage({
       ? "登录失败，请重试"
       : null;
 
+  // ── Dynamic mini-calendar (server-time, TZ=Asia/Shanghai) ──
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth(); // 0-indexed
+  const today = now.getDate();
+  // firstDay: 0=Sun … 6=Sat. Convert to Mon-based offset (0=Mon … 6=Sun).
+  const firstDayRaw = new Date(year, month, 1).getDay(); // 0=Sun
+  const firstDay = (firstDayRaw + 6) % 7; // 0=Mon … 6=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const chineseMonths = ["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"];
+  const monthLabel = chineseMonths[month];
+
+  // Decorative emoji days: today-2 and today-5 (clamped to valid range)
+  const emojiDay1 = today - 2 >= 1 ? today - 2 : today + 3; // 🍎
+  const emojiDay2 = today - 5 >= 1 ? today - 5 : today + 6 <= daysInMonth ? today + 6 : 1; // 🏃
+  // Dot days: today-1, today-4
+  const dotDay1 = today - 1 >= 1 ? today - 1 : null;
+  const dotDay2 = today - 4 >= 1 ? today - 4 : null;
+
+  // Build flat cell array: leading empties + day cells
+  type CalCell = { type: "empty" } | { type: "day"; day: number };
+  const cells: CalCell[] = [];
+  for (let i = 0; i < firstDay; i++) cells.push({ type: "empty" });
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ type: "day", day: d });
+  // Pad to a multiple of 7
+  while (cells.length % 7 !== 0) cells.push({ type: "empty" });
+
   return (
     <>
       <style>{`
@@ -359,42 +386,36 @@ export default async function LoginPage({
         <aside className="login-left" aria-hidden="true">
           <div className="journal-art">
             <div className="cal-grid" role="presentation">
-              {/* Day-of-week headers */}
+              {/* Month caption spanning full row */}
+              <div style={{ gridColumn: "1 / -1", textAlign: "center", fontSize: "0.6875rem", fontWeight: 600, color: "var(--ink-soft)", letterSpacing: "0.06em", paddingBottom: "4px" }}>
+                {monthLabel}
+              </div>
+              {/* Day-of-week headers: Mon … Sun */}
               {["一", "二", "三", "四", "五", "六", "日"].map((d) => (
                 <div key={d} className="cal-header-cell">{d}</div>
               ))}
-              {/* Week 1 */}
-              <div className="cal-cell" />
-              <div className="cal-cell" />
-              <div className="cal-cell has-dot">1</div>
-              <div className="cal-cell">2</div>
-              <div className="cal-cell has-dot emoji-cell">🍎</div>
-              <div className="cal-cell">4</div>
-              <div className="cal-cell has-dot">5</div>
-              {/* Week 2 */}
-              <div className="cal-cell">6</div>
-              <div className="cal-cell has-dot emoji-cell">🏃</div>
-              <div className="cal-cell">8</div>
-              <div className="cal-cell has-dot">9</div>
-              <div className="cal-cell emoji-cell">🍎</div>
-              <div className="cal-cell">11</div>
-              <div className="cal-cell has-dot">12</div>
-              {/* Week 3 */}
-              <div className="cal-cell">13</div>
-              <div className="cal-cell emoji-cell">🏃</div>
-              <div className="cal-cell has-dot">15</div>
-              <div className="cal-cell">16</div>
-              <div className="cal-cell has-dot emoji-cell">🍎</div>
-              <div className="cal-cell">18</div>
-              <div className="cal-cell today">19</div>
-              {/* Week 4 */}
-              <div className="cal-cell">20</div>
-              <div className="cal-cell">21</div>
-              <div className="cal-cell">22</div>
-              <div className="cal-cell">23</div>
-              <div className="cal-cell">24</div>
-              <div className="cal-cell">25</div>
-              <div className="cal-cell">26</div>
+              {/* Day cells */}
+              {cells.map((cell, idx) => {
+                if (cell.type === "empty") {
+                  return <div key={`e-${idx}`} className="cal-cell" />;
+                }
+                const d = cell.day;
+                const isToday = d === today;
+                const isEmoji1 = d === emojiDay1;
+                const isEmoji2 = d === emojiDay2;
+                const hasDot = !isToday && (d === dotDay1 || d === dotDay2);
+                const classes = [
+                  "cal-cell",
+                  isToday ? "today" : "",
+                  hasDot ? "has-dot" : "",
+                  (isEmoji1 || isEmoji2) && !isToday ? "emoji-cell" : "",
+                ].filter(Boolean).join(" ");
+                return (
+                  <div key={d} className={classes}>
+                    {isEmoji1 && !isToday ? "🍎" : isEmoji2 && !isToday ? "🏃" : d}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="journal-tagline">
