@@ -8,9 +8,7 @@ export default defineConfig({
     globals: true,
     setupFiles: [],
     pool: "forks",
-    poolOptions: {
-      forks: { singleFork: true }, // SQLite single-file, avoid concurrent writes
-    },
+    fileParallelism: false, // SQLite single-file: don't run test files in parallel
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
