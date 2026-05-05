@@ -161,6 +161,16 @@ export default {
 
 （Tailwind 4 不需要 `tailwind.config.ts` 也能跑，配置可后续按需添加。）
 
+> ⚠ Next.js 15 + 严格 TS 下，`import "./globals.css"` 的副作用导入会触发 `Cannot find module` 类型错误。同步建一个 `types/globals.d.ts` 文件并把 `types/**/*.d.ts` 加入 tsconfig.json 的 include。
+
+`types/globals.d.ts`：
+
+```typescript
+declare module "*.css";
+```
+
+`tsconfig.json` 的 include 数组要包含 `"types/**/*.d.ts"`。
+
 - [ ] **Step 1.6: 写根 layout 和占位首页**
 
 `src/app/layout.tsx`：
@@ -202,7 +212,8 @@ out
 dist
 *.log
 .env
-.env.local
+.env*.local
+.env.production
 data/
 test-data/
 playwright-report/
@@ -215,7 +226,6 @@ test-results/
 ```
 DATABASE_URL="file:../data/scheduler.db"
 NODE_ENV=development
-SESSION_SECRET_LENGTH=32
 TZ=Asia/Shanghai
 ```
 
@@ -381,15 +391,15 @@ export default defineConfig({
     globals: true,
     setupFiles: [],
     pool: "forks",
-    poolOptions: {
-      forks: { singleFork: true }, // SQLite 单文件，避免并发写
-    },
+    fileParallelism: false, // SQLite 单文件，禁止并行跑测试文件
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
   },
 });
 ```
+
+> Vitest 4 移除了 `poolOptions`，改用顶层 `fileParallelism: false` 表达"单进程顺序跑"的意图。等价于旧版 `poolOptions.forks.singleFork`。
 
 - [ ] **Step 3.3: 写 `tests/helpers/test-db.ts` —— 隔离测试 DB**
 
