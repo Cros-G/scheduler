@@ -33,7 +33,7 @@ test("正确凭据 → 进主页 → 登出 → 回 /login", async ({ page }) =>
   await page.fill('input[name="password"]', TEST_PASSWORD);
   await page.click('button[type="submit"]');
   await expect(page).toHaveURL("http://localhost:3000/");
-  await expect(page.locator("h1")).toContainText("主页");
+  await expect(page.locator("h1.mv-month-label")).toBeVisible();
   await expect(page.locator("text=E2E Alice")).toBeVisible();
 
   // Logout

@@ -72,7 +72,9 @@ test.describe.serial("tasks CRUD flow", () => {
     ).toBeVisible({ timeout: 8000 });
 
     // Type badge
-    await expect(page.locator('span:has-text("次数")')).toBeVisible();
+    await expect(
+      page.locator('li').filter({ hasText: '每日跑步' }).locator('span:has-text("次数")')
+    ).toBeVisible();
   });
 
   test("创建 CHECK 任务（无目标字段），出现在列表", async ({ page }) => {
@@ -103,7 +105,9 @@ test.describe.serial("tasks CRUD flow", () => {
     ).toBeVisible({ timeout: 8000 });
 
     // Type badge shows "打卡"
-    await expect(page.locator('span:has-text("打卡")')).toBeVisible();
+    await expect(
+      page.locator('li').filter({ hasText: '每日冥想' }).locator('span:has-text("打卡")')
+    ).toBeVisible();
   });
 
   test("校验失败：图标为空时显示行内错误", async ({ page }) => {
