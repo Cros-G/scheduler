@@ -11,5 +11,8 @@ test-data/
 playwright-report/
 test-results/
 .playwright-mcp/
+*.tsbuildinfo
+# Loose screenshot artifacts from manual verification (Playwright MCP, impeccable craft, etc.)
+/*.png
 .DS_Store
 
