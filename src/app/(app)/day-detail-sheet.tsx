@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
+import { useEffect, useTransition, useCallback, useRef, useState } from "react";
 import type { Task } from "@prisma/client";
 import { addOccurrenceAction, removeOccurrenceAction, setCheckAction } from "./occurrences/actions";
+import { NoteEditor, type NoteData } from "./note-editor";
 
 type AggEntry = {
   taskId: number;
@@ -18,6 +19,7 @@ interface DayDetailSheetProps {
   date: string; // YYYY-MM-DD
   occurrences: AggEntry[];
   tasks: Task[];
+  note: NoteData | null | undefined;
   onClose: () => void;
 }
 
@@ -28,17 +30,30 @@ function formatDateDisplay(dateKey: string): string {
   return `${y} 年 ${m} 月 ${d} 日 ${weekdays[dow]}`;
 }
 
-export function DayDetailSheet({ date, occurrences, tasks, onClose }: DayDetailSheetProps) {
+export function DayDetailSheet({ date, occurrences, tasks, note, onClose }: DayDetailSheetProps) {
   const [isPending, startTransition] = useTransition();
+  const isDirtyRef = useRef(false);
 
-  // Close on ESC
+  // Guard: warn user about unsaved changes before closing
+  const safeClose = useCallback(() => {
+    if (isDirtyRef.current) {
+      if (!window.confirm("未保存的修改将丢失，是否离开？")) return;
+    }
+    onClose();
+  }, [onClose]);
+
+  function handleDirtyChange(dirty: boolean) {
+    isDirtyRef.current = dirty;
+  }
+
+  // Close on ESC (with unsaved-changes guard)
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") safeClose();
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  }, [safeClose]);
 
   // Prevent body scroll while open
   useEffect(() => {
@@ -364,41 +379,35 @@ export function DayDetailSheet({ date, occurrences, tasks, onClose }: DayDetailS
           color: oklch(34% 0.12 155);
         }
 
-        /* Heart-voices placeholder */
-        .sheet-heartvoice-box {
-          padding: 16px;
-          background: oklch(95% 0.010 62);
-          border: 1px dashed oklch(80% 0.016 62);
-          border-radius: 5px;
-          text-align: center;
+        /* Heart-voices section */
+        .sheet-heartvoice-section {
+          margin-top: 20px;
+          padding-bottom: 8px;
         }
 
-        .sheet-heartvoice-box p {
-          font-size: 0.8125rem;
-          color: oklch(60% 0.014 58);
-          margin: 0;
-          letter-spacing: 0.03em;
-          line-height: 1.6;
-          font-style: italic;
-        }
-
-        .sheet-heartvoice-box .coming-tag {
-          display: inline-block;
-          margin-top: 6px;
+        .sheet-heartvoice-title {
           font-size: 0.6875rem;
-          padding: 2px 8px;
-          border-radius: 10px;
-          background: oklch(88% 0.016 62);
-          color: oklch(48% 0.018 58);
-          letter-spacing: 0.05em;
+          font-weight: 600;
+          color: oklch(60% 0.016 58);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          margin-bottom: 10px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .sheet-heartvoice-quill {
           font-style: normal;
+          opacity: 0.7;
+          font-size: 0.875rem;
         }
       `}</style>
 
       {/* Backdrop */}
       <div
         className="sheet-backdrop"
-        onClick={onClose}
+        onClick={safeClose}
         aria-hidden="true"
       />
 
@@ -414,7 +423,7 @@ export function DayDetailSheet({ date, occurrences, tasks, onClose }: DayDetailS
           <div className="sheet-date">{dateDisplay}</div>
           <button
             className="sheet-close-btn"
-            onClick={onClose}
+            onClick={safeClose}
             aria-label="关闭"
           >
             ×
@@ -524,13 +533,17 @@ export function DayDetailSheet({ date, occurrences, tasks, onClose }: DayDetailS
             )}
           </div>
 
-          {/* 当日心声 placeholder */}
-          <div className="sheet-section">
-            <div className="sheet-section-title">当日心声</div>
-            <div className="sheet-heartvoice-box">
-              <p>记录今天的感受与心声</p>
-              <span className="coming-tag">心声功能将在 Plan 4 上线</span>
+          {/* 当日心声 — note editor */}
+          <div className="sheet-heartvoice-section">
+            <div className="sheet-heartvoice-title">
+              <span className="sheet-heartvoice-quill">✎</span>
+              当日心声
             </div>
+            <NoteEditor
+              date={date}
+              note={note}
+              onDirtyChange={handleDirtyChange}
+            />
           </div>
         </div>
       </div>

@@ -91,6 +91,18 @@ export default async function HomePage({
     }
   }
 
+  // Fetch notes for the current month
+  const notes = await prisma.dailyNote.findMany({
+    where: {
+      userId: user.id,
+      date: { gte: start, lte: end },
+    },
+    include: {
+      images: { orderBy: { sortOrder: "asc" } },
+    },
+  });
+  const notesByDate = Object.fromEntries(notes.map((n) => [n.date, n]));
+
   const currentTodayKey = todayKey();
 
   return (
@@ -99,6 +111,7 @@ export default async function HomePage({
       month={month}
       tasks={tasks}
       occurrencesByDate={occurrencesByDate}
+      notesByDate={notesByDate}
       todayKey={currentTodayKey}
     />
   );

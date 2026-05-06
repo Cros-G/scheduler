@@ -6,6 +6,7 @@ import type { Task } from "@prisma/client";
 import { CHINESE_MONTHS, WEEKDAY_LABELS_CN, monthGrid, shiftMonth } from "@/lib/dates";
 import { addOccurrenceAction, setCheckAction } from "./occurrences/actions";
 import { DayDetailSheet } from "./day-detail-sheet";
+import type { NoteData } from "./note-editor";
 
 type AggEntry = {
   taskId: number;
@@ -22,10 +23,11 @@ interface MonthViewProps {
   month: number;
   tasks: Task[];
   occurrencesByDate: Record<string, AggEntry[]>;
+  notesByDate: Record<string, NoteData>;
   todayKey: string;
 }
 
-export function MonthView({ year, month, tasks, occurrencesByDate, todayKey }: MonthViewProps) {
+export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, todayKey }: MonthViewProps) {
   const router = useRouter();
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -476,6 +478,24 @@ export function MonthView({ year, month, tasks, occurrencesByDate, todayKey }: M
           letter-spacing: 0.01em;
         }
 
+        /* ── Note indicator ── */
+        .mv-note-indicator {
+          position: absolute;
+          bottom: 5px;
+          right: 5px;
+          font-size: 0.625rem;
+          line-height: 1;
+          color: oklch(58% 0.030 52);
+          opacity: 0.62;
+          pointer-events: none;
+          user-select: none;
+          transition: opacity 0.12s;
+        }
+
+        .mv-day-cell:hover .mv-note-indicator {
+          opacity: 0.9;
+        }
+
         /* ── Toast ── */
         .mv-toast {
           position: fixed;
@@ -607,6 +627,11 @@ export function MonthView({ year, month, tasks, occurrencesByDate, todayKey }: M
                   const cellOccs = occurrencesByDate[cell.key] ?? [];
                   const isCellPending =
                     isPending && pendingDateKey === cell.key;
+                  const cellNote = notesByDate[cell.key];
+                  const hasNote = !!cellNote && (
+                    (cellNote.content && cellNote.content.length > 0) ||
+                    cellNote.images.length > 0
+                  );
 
                   const cellClasses = [
                     "mv-day-cell",
@@ -619,6 +644,13 @@ export function MonthView({ year, month, tasks, occurrencesByDate, todayKey }: M
                   // Compute display: up to 4 icons + overflow
                   const displayOccs = cellOccs.slice(0, 4);
                   const overflow = cellOccs.length - 4;
+
+                  // Note tooltip text
+                  const noteTitle = hasNote
+                    ? cellNote!.content && cellNote!.content.length > 0
+                      ? cellNote!.content.slice(0, 30) + (cellNote!.content.length > 30 ? "…" : "")
+                      : "（仅图片）"
+                    : undefined;
 
                   return (
                     <div
@@ -667,6 +699,16 @@ export function MonthView({ year, month, tasks, occurrencesByDate, todayKey }: M
                           <div className="mv-overflow-chip">+{overflow}</div>
                         )}
                       </div>
+                      {/* Note indicator */}
+                      {hasNote && (
+                        <span
+                          className="mv-note-indicator"
+                          title={noteTitle}
+                          aria-label="有心声记录"
+                        >
+                          ✎
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -689,6 +731,7 @@ export function MonthView({ year, month, tasks, occurrencesByDate, todayKey }: M
           date={sheetDate}
           occurrences={occurrencesByDate[sheetDate] ?? []}
           tasks={tasks}
+          note={notesByDate[sheetDate] ?? null}
           onClose={() => setSheetDate(null)}
         />
       )}
