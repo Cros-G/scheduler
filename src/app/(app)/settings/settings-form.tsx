@@ -24,8 +24,14 @@ export function SettingsForm({ username, initialDisplayName, initialColor }: Set
     setStatus("saving");
     setErrorMsg("");
 
+    // Read directly from the form element to ensure we get the current DOM value
+    // (React state and DOM value should be in sync for controlled inputs)
+    const formEl = formRef.current;
+    const domValue = formEl?.querySelector<HTMLInputElement>('input[name="displayName"]')?.value;
+    const currentDisplayName = domValue ?? displayName;
+
     const fd = new FormData();
-    fd.set("displayName", displayName);
+    fd.set("displayName", currentDisplayName);
     fd.set("color", selectedColor);
 
     const result = await updateProfileAction(fd);
@@ -321,6 +327,7 @@ export function SettingsForm({ username, initialDisplayName, initialColor }: Set
             <label htmlFor="sf-displayName" className="sf-label">昵称</label>
             <input
               id="sf-displayName"
+              name="displayName"
               type="text"
               className="sf-input"
               value={displayName}
