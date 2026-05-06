@@ -56,3 +56,34 @@ export async function deleteTaskAction(taskId: number) {
   if (!result.ok) throw new Error(result.error);
   revalidatePath(TASKS_PATH);
 }
+
+// ── Form-data variants for use with native <form action={...}> ──────────────
+// These read taskId from a hidden form field, so they work as plain form actions
+// without needing .bind() gymnastics.
+
+export async function archiveTaskFormAction(formData: FormData) {
+  const taskId = Number(formData.get("taskId"));
+  if (!taskId) throw new Error("taskId missing");
+  const user = await requireAuth();
+  const result = await archiveTaskCore(user.id, taskId, prisma);
+  if (!result.ok) throw new Error(result.error);
+  revalidatePath(TASKS_PATH);
+}
+
+export async function unarchiveTaskFormAction(formData: FormData) {
+  const taskId = Number(formData.get("taskId"));
+  if (!taskId) throw new Error("taskId missing");
+  const user = await requireAuth();
+  const result = await unarchiveTaskCore(user.id, taskId, prisma);
+  if (!result.ok) throw new Error(result.error);
+  revalidatePath(TASKS_PATH);
+}
+
+export async function deleteTaskFormAction(formData: FormData) {
+  const taskId = Number(formData.get("taskId"));
+  if (!taskId) throw new Error("taskId missing");
+  const user = await requireAuth();
+  const result = await deleteTaskCore(user.id, taskId, prisma);
+  if (!result.ok) throw new Error(result.error);
+  revalidatePath(TASKS_PATH);
+}
