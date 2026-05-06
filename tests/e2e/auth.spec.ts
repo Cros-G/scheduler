@@ -34,7 +34,7 @@ test("正确凭据 → 进主页 → 登出 → 回 /login", async ({ page }) =>
   await page.click('button[type="submit"]');
   await expect(page).toHaveURL("http://localhost:3000/");
   await expect(page.locator("h1.mv-month-label")).toBeVisible();
-  await expect(page.locator("text=E2E Alice")).toBeVisible();
+  await expect(page.locator("text=E2E Alice").first()).toBeVisible();
 
   // Logout
   await page.click('button:has-text("登出")');
