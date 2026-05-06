@@ -8,15 +8,16 @@ datasource db {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  username     String    @unique
+  id           Int          @id @default(autoincrement())
+  username     String       @unique
   passwordHash String
   displayName  String
   color        String
-  isAdmin      Boolean   @default(false)
-  createdAt    DateTime  @default(now())
+  isAdmin      Boolean      @default(false)
+  createdAt    DateTime     @default(now())
   sessions     Session[]
   tasks        Task[]
+  occurrences  Occurrence[]
 }
 
 model Session {
@@ -52,8 +53,23 @@ model Task {
   targetPeriod Period?
   isPrivate    Boolean   @default(false)
   archivedAt   DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  occurrences  Occurrence[]
 
   @@index([userId])
+}
+
+model Occurrence {
+  id        Int      @id @default(autoincrement())
+  taskId    Int
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  count     Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+  @@index([taskId, date])
 }
