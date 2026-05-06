@@ -28,9 +28,11 @@ interface MonthViewProps {
   readonly?: boolean;
   /** If provided, shown as "正在看 @username 的日历" banner */
   viewingUser?: { username: string; displayName: string; color: string } | null;
+  /** Per-task progress counts for today's DAY/WEEK/MONTH periods */
+  progressByTaskId?: Record<number, { day: number; week: number; month: number }>;
 }
 
-export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, todayKey, readonly = false, viewingUser }: MonthViewProps) {
+export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, todayKey, readonly = false, viewingUser, progressByTaskId }: MonthViewProps) {
   const router = useRouter();
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -300,6 +302,33 @@ export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, 
           text-align: center;
           border-top: 1px solid var(--border);
           letter-spacing: 0.03em;
+        }
+
+        /* ── Progress badge (COUNTED tasks) ── */
+        .mv-progress-badge {
+          font-size: 0.6875rem;
+          font-variant-numeric: tabular-nums;
+          letter-spacing: 0.01em;
+          padding: 1px 6px;
+          border-radius: 10px;
+          font-weight: 500;
+          flex-shrink: 0;
+          line-height: 1.5;
+        }
+
+        .mv-progress-badge.empty {
+          background: oklch(92% 0.008 58);
+          color: var(--ink-faint);
+        }
+
+        .mv-progress-badge.partial {
+          background: oklch(93% 0.018 55);
+          color: oklch(44% 0.10 48);
+        }
+
+        .mv-progress-badge.complete {
+          background: oklch(91% 0.060 145);
+          color: oklch(36% 0.10 145);
         }
 
         /* ── Month grid ── */
@@ -653,6 +682,27 @@ export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, 
                         {task.icon}
                       </div>
                       <span className="mv-task-name">{task.name}</span>
+                      {task.type === "COUNTED" && task.targetCount && task.targetPeriod && (() => {
+                        const prog = progressByTaskId?.[task.id];
+                        const raw = prog
+                          ? task.targetPeriod === "DAY"
+                            ? prog.day
+                            : task.targetPeriod === "WEEK"
+                            ? prog.week
+                            : prog.month
+                          : 0;
+                        const target = task.targetCount;
+                        const cls = raw === 0 ? "empty" : raw >= target ? "complete" : "partial";
+                        const label = raw >= target ? `${raw}/${target} ✓` : `${raw}/${target}`;
+                        return (
+                          <span
+                            className={`mv-progress-badge ${cls}`}
+                            aria-label={`进度 ${raw} / ${target}`}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </li>
                   );
                 })}

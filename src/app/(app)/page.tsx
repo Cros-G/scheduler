@@ -5,6 +5,7 @@ import {
   formatDateKey,
   todayKey,
   monthRange,
+  weekRange,
   CHINESE_MONTHS,
 } from "@/lib/dates";
 import { MonthView } from "./month-view";
@@ -91,6 +92,46 @@ export default async function HomePage({
     }
   }
 
+  // ── Progress aggregations for COUNTED tasks (always based on TODAY's periods) ──
+  const todayK = todayKey();
+  const weekR = weekRange(todayK);
+  const now2 = new Date();
+  const todayYear = now2.getFullYear();
+  const todayMonth = now2.getMonth() + 1;
+  const monthR = monthRange(todayYear, todayMonth);
+
+  const [dayAgg, weekAgg, monthAgg] = await Promise.all([
+    prisma.occurrence.groupBy({
+      by: ["taskId"],
+      where: { userId: user.id, date: { equals: todayK } },
+      _sum: { count: true },
+    }),
+    prisma.occurrence.groupBy({
+      by: ["taskId"],
+      where: { userId: user.id, date: { gte: weekR.start, lte: weekR.end } },
+      _sum: { count: true },
+    }),
+    prisma.occurrence.groupBy({
+      by: ["taskId"],
+      where: { userId: user.id, date: { gte: monthR.start, lte: monthR.end } },
+      _sum: { count: true },
+    }),
+  ]);
+
+  const progressByTaskId: Record<number, { day: number; week: number; month: number }> = {};
+  for (const row of dayAgg) {
+    if (!progressByTaskId[row.taskId]) progressByTaskId[row.taskId] = { day: 0, week: 0, month: 0 };
+    progressByTaskId[row.taskId].day = row._sum.count ?? 0;
+  }
+  for (const row of weekAgg) {
+    if (!progressByTaskId[row.taskId]) progressByTaskId[row.taskId] = { day: 0, week: 0, month: 0 };
+    progressByTaskId[row.taskId].week = row._sum.count ?? 0;
+  }
+  for (const row of monthAgg) {
+    if (!progressByTaskId[row.taskId]) progressByTaskId[row.taskId] = { day: 0, week: 0, month: 0 };
+    progressByTaskId[row.taskId].month = row._sum.count ?? 0;
+  }
+
   // Fetch notes for the current month
   const notes = await prisma.dailyNote.findMany({
     where: {
@@ -113,6 +154,7 @@ export default async function HomePage({
       occurrencesByDate={occurrencesByDate}
       notesByDate={notesByDate}
       todayKey={currentTodayKey}
+      progressByTaskId={progressByTaskId}
     />
   );
 }

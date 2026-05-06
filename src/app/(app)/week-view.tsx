@@ -26,6 +26,8 @@ interface WeekViewProps {
   occurrencesByDate: Record<string, AggEntry[]>;
   notesByDate: Record<string, NoteData>;
   todayKey: string;
+  /** Per-task progress counts for today's DAY/WEEK/MONTH periods */
+  progressByTaskId?: Record<number, { day: number; week: number; month: number }>;
 }
 
 // Build the 7 day cells from weekStart (Monday) to weekEnd (Sunday)
@@ -74,6 +76,7 @@ export function WeekView({
   occurrencesByDate,
   notesByDate,
   todayKey,
+  progressByTaskId,
 }: WeekViewProps) {
   const router = useRouter();
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
@@ -328,6 +331,33 @@ export function WeekView({
           text-align: center;
           border-top: 1px solid var(--border);
           letter-spacing: 0.03em;
+        }
+
+        /* ── Progress badge (COUNTED tasks) ── */
+        .wv-progress-badge {
+          font-size: 0.6875rem;
+          font-variant-numeric: tabular-nums;
+          letter-spacing: 0.01em;
+          padding: 1px 6px;
+          border-radius: 10px;
+          font-weight: 500;
+          flex-shrink: 0;
+          line-height: 1.5;
+        }
+
+        .wv-progress-badge.empty {
+          background: oklch(92% 0.008 58);
+          color: var(--ink-faint);
+        }
+
+        .wv-progress-badge.partial {
+          background: oklch(93% 0.018 55);
+          color: oklch(44% 0.10 48);
+        }
+
+        .wv-progress-badge.complete {
+          background: oklch(91% 0.060 145);
+          color: oklch(36% 0.10 145);
         }
 
         /* ── Week grid ── */
@@ -637,6 +667,27 @@ export function WeekView({
                         {task.icon}
                       </div>
                       <span className="wv-task-name">{task.name}</span>
+                      {task.type === "COUNTED" && task.targetCount && task.targetPeriod && (() => {
+                        const prog = progressByTaskId?.[task.id];
+                        const raw = prog
+                          ? task.targetPeriod === "DAY"
+                            ? prog.day
+                            : task.targetPeriod === "WEEK"
+                            ? prog.week
+                            : prog.month
+                          : 0;
+                        const target = task.targetCount;
+                        const cls = raw === 0 ? "empty" : raw >= target ? "complete" : "partial";
+                        const label = raw >= target ? `${raw}/${target} ✓` : `${raw}/${target}`;
+                        return (
+                          <span
+                            className={`wv-progress-badge ${cls}`}
+                            aria-label={`进度 ${raw} / ${target}`}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </li>
                   );
                 })}
