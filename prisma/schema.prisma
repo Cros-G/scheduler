@@ -16,6 +16,7 @@ model User {
   isAdmin      Boolean   @default(false)
   createdAt    DateTime  @default(now())
   sessions     Session[]
+  tasks        Task[]
 }
 
 model Session {
@@ -24,6 +25,35 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum TaskType {
+  COUNTED
+  CHECK
+}
+
+enum Period {
+  DAY
+  WEEK
+  MONTH
+}
+
+model Task {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  icon         String
+  color        String
+  type         TaskType
+  targetCount  Int?
+  targetPeriod Period?
+  isPrivate    Boolean   @default(false)
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([userId])
 }
