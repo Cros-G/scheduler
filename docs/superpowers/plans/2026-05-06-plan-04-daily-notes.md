@@ -24,16 +24,79 @@
 
 ## ⚠ 实施前的关键坑点
 
-1. **路径遍历**：保存文件名严格用服务端生成的 uuid + 用户上传的扩展名（白名单 jpg/jpeg/png/webp/gif），**绝不**用客户端文件名拼路径。
-2. **MIME 检查**：multipart 里的 mimeType 客户端伪造可能。轻量做法：除 `Content-Type` 校验外，再验证文件 magic bytes 前几字节匹配（jpg = `FF D8 FF`，png = `89 50 4E 47`，webp = `RIFF…WEBP`，gif = `GIF8`）。MVP 可只信 mimeType + 扩展名，留 TODO；但身处自部署可控环境，风险可接受。
-3. **DATA_DIR 默认**：`./data/`（项目根 data 目录），生产可设 `/var/scheduler/`。`uploads/` 子目录要存在 → 先 `fs.mkdirSync(..., { recursive: true })`。
-4. **6 张限制 + 5MB 限制**：上传时校验。后台拒绝超额（即便前端拦不住）。
-5. **图片要鉴权服务**：`GET /api/uploads/[id]` 取数据库的 NoteImage 行，验证当前用户有权（MVP：心声全公开 → 任何登录用户都能看；Plan 5 私密上线后再加过滤）。
-6. **Note upsert 副作用**：`@@unique([userId, date])` 让 upsert 干净。但**没有内容也能存图**的语义需要：上传图片时，若当日 note 不存在，自动创建一个 `content=""` 的 note，再附图。
-7. **删除图片**：`deleteNoteImageCore` 删 DB 行 + 删磁盘文件。文件删除失败不应回滚（fire-and-forget），用 `.catch(() => {})`。
-8. **content 长度**：≤10000，UI 也要计数器。
-9. **textarea 自动保存还是手动保存？**：自动保存复杂（防抖 + 状态），MVP 选**显式保存按钮**。Esc 不丢未保存内容（提示"未保存的修改"）。
-10. **图片排序**：现在不做拖拽，按 `sortOrder` 顺序展示（上传时取当前最大 + 1）。`reorderNoteImages` 接口先建好，UI 用按钮"上移/下移"或干脆不做（保留接口待 Plan 5 polish）。MVP 跳过 reorder UI，只列接口。
+### 已知必须处理
+
+1. **API 路由 ≠ Page 路由的 auth 处理**：
+   - 现有 `requireAuth()` 用 `redirect('/login')` → 对页面访问 OK，对 fetch API 不行（前端拿到 HTML 而不是 401 JSON）
+   - **必须**新增 `requireAuthApi()`：返回 `User | Response`，未登录时返回 `Response.json({ok:false,error:"未登录"}, {status: 401})`
+   - 在 `src/lib/auth.ts` 加这个新 helper，uploads/[id] 和 uploads POST 都用它
+
+2. **图片数量并发条件**：
+   - 用户连点上传 6 张 → 浏览器并行发 6 请求，每个都看到 `count <= 5` 都通过校验 → 写超 6 张
+   - **修复**：上传 route 用 `prisma.$transaction` 包"upsert note + 计数 + insert image + 再计数 → 超限 throw"。失败回滚整事务 + 删除磁盘文件
+   - 单用户场景罕见但仍是真 bug，处理掉
+
+3. **Next.js 15 Request.formData() body 限制**：
+   - **Server Actions 默认 1MB 上限**（之前是 4MB），但 **Route Handler 没有此限制**（fully streaming）
+   - 我们走 Route Handler 上传，所以 5MB 不会被框架拦
+   - 仍需在 Route 里手动检查 `buffer.length > 5MB` 兜底
+   - **绝对不能**把上传走 server action（容易踩 size 限制）
+
+4. **路径遍历**：保存文件名严格用服务端 `crypto.randomBytes(16).toString('hex')` + 白名单扩展（jpg/png/webp/gif）。**绝不**用客户端 file.name 拼路径
+
+5. **DATA_DIR 默认**：`./data/`，生产可 `/var/scheduler/`。`uploads/` 子目录要 `fs.mkdir(..., { recursive: true })` 创建
+
+6. **图片要鉴权服务**：`GET /api/uploads/[id]` 调 `requireAuthApi`，再读 `NoteImage` 行，再读盘流式返回。MVP 心声圈内可见（任何登录用户都能看心声 + 图）；Plan 5 加 isPrivate 字段时在这里加过滤
+
+7. **Note upsert 副作用**：上传图片时若当日 note 不存在，自动 upsert 一个 `content=""` 的 note 再附图
+
+8. **删除图片**：先删 DB 行，再 fire-and-forget 删盘（删盘失败只 console.error，不回滚 DB）
+
+9. **content 长度限制**：UI textarea `maxLength=10000`，后端 `validateNoteContent` 兜底
+
+10. **textarea 保存策略**：MVP 显式"保存"按钮（不做防抖自动保存）。**未保存关闭 sheet** → `window.confirm("未保存的修改将丢失，是否离开？")`。比较 `currentContent !== lastSavedContent` 判断是否未保存
+
+11. **lastSavedContent 同步**：父组件 `revalidatePath` 之后会把新 props 传下来。子组件 `useEffect` 监听 `note?.content` 变化 → 更新 `lastSavedContent`。**这块要小心**：用户在编辑过程中其他客户端动作触发了 revalidate（不太可能但可能），不能让用户的本地编辑被覆盖。**简化**：组件 mount 时把 props.note.content 设成 lastSaved 和 current；之后 props 变化忽略（除非用户没编辑过 — 用 `useRef` 跟踪 dirty flag）
+
+12. **图片排序**：MVP 不做 reorder UI，按 `sortOrder asc` 展示（上传时取当前最大 + 1）。core 函数留着供 Plan 5 接
+
+13. **磁盘删除失败处理**：用 `.catch((e) => console.error("upload cleanup failed", relPath, e))` 而不是直接吞掉。运维问题需要看到
+
+### 安全 / 质量类
+
+14. **MIME 伪造**：客户端可以伪造 `file.type`。MVP 自部署可控环境 + emoji picker 一类的小风险，**接受**。Plan 5/6 可以加 magic byte 检查（jpg=`FFD8FF`, png=`89504E47`, webp=`RIFF...WEBP`, gif=`GIF8`）
+
+15. **图片直链未鉴权访问**：经过 `/api/uploads/[id]` 路由，`requireAuthApi` 拒未登录 → 401。**测试要覆盖**
+
+16. **图片缩略图带宽**：5MB 原图渲染 96×96 浪费。MVP 不做服务端缩略图（避免 sharp 等 deps）。README 里标记 future work
+
+17. **revalidatePath('/')**：刷新月视图（也是 `/` 路径）。但 day detail sheet 里改了内容后**要主动 `router.refresh()`**，否则 sheet 自己不重新拉数据（sheet 是同一个 client component 实例，只有 props 重传才更新）。所以 action 调用后客户端要 `router.refresh()`
+
+18. **next/cache revalidatePath 在 dev mode**：dev 下 revalidate 立即生效；prod 下生效但走 ISR pipeline。MVP dev 工作正常即可
+
+### 测试 / 运维相关
+
+19. **process.env.DATA_DIR 在测试中污染**：`storage.test.ts` 改 DATA_DIR。Vitest `pool: forks` + `fileParallelism: false` 单进程顺序跑，测试间共享 process.env。**必须**：每个修改 DATA_DIR 的测试在 `afterEach` 还原
+
+20. **uploads-route 集成测试**：复杂（要 mock cookies / requireAuth）。**不写** vitest 集成测试 — 完全靠 E2E 覆盖完整链路
+
+21. **E2E 上传**：用 `page.setInputFiles(selector, { name, mimeType, buffer })`，buffer 用预先准备的 1×1 PNG hex 字节序列
+
+22. **dev DB cleanup**：每次 e2e 跑都 wipe `e2e_alice` 的 noteImage / dailyNote / occurrence / task。**注意**：noteImage cascade on dailyNote delete，但 dailyNote 不会因 user.tasks 删除自动删 — 显式删
+
+23. **编辑器 onClose 被打断**：用户点关闭 → 弹 confirm → 按取消 → sheet 仍打开。逻辑是先拦后关。Playwright E2E 可以 `page.on('dialog', d => d.dismiss())` 测取消分支
+
+### 容易遗漏的细节
+
+24. **下午 12:00 服务器时区**：图片路径用 `dateKey.slice(0,7)` 取 YYYY-MM。前提 dateKey 已经是服务器时区下的日期。todayKey() 返回的就是。但如果客户端传一个非"今天"的日期（如往日补记），路径仍按那个日期分组，OK
+
+25. **空心声 + 0 图 = 删除 note？**：MVP 不删（保留 created_at 作为"那天我打开过"的痕迹）。spec 没要求清理
+
+26. **textarea 中输入的换行 \n / Tab**：DB 里保留原样。渲染时 `white-space: pre-wrap`
+
+27. **图片删除竞态**：用户连点 X 删两次同一图。第二次 `findUnique` 拿 null → 返回 "图片不存在"。前端处理：删除按钮在 pending 时禁用 + revalidate 后图片消失 → 自然不会双击
+
+28. **数据库迁移影响 dev DB**：dev DB 已经有 e2e_alice 等用户。新增 DailyNote 表对他们无影响。安全
 
 ---
 
@@ -507,7 +570,22 @@ export async function reorderNoteImagesAction(noteId: number, imageIds: number[]
 
 ---
 
-### Task 4: storage helper + uploads API（TDD where reasonable）
+### Task 4: storage helper + `requireAuthApi` + uploads API（TDD where reasonable）
+
+#### Step 4.0: 给 `src/lib/auth.ts` 加 `requireAuthApi`
+
+```typescript
+export async function requireAuthApi(): Promise<User | Response> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "未登录" }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  return user;
+}
+```
 
 #### `src/lib/storage.ts`
 
@@ -603,84 +681,125 @@ describe("save / read / delete roundtrip", () => {
 });
 ```
 
-#### Upload route — `src/app/api/uploads/route.ts`
+#### `requireAuthApi` 加到 `src/lib/auth.ts`
 
 ```typescript
-import { requireAuth } from "@/lib/auth";
+export async function requireAuthApi(): Promise<User | Response> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "未登录" }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  return user;
+}
+```
+
+#### Upload route — `src/app/api/uploads/route.ts`
+
+> **关键**：用 `requireAuthApi` 而不是 `requireAuth`（区别见坑点 #1）。
+> **关键**：用 `prisma.$transaction` 把"upsert note + 检查 count + insert image"放一起，避免并发超限（坑点 #2）。先写盘再开事务，事务失败时删盘。
+
+```typescript
+import { requireAuthApi } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import fs from "node:fs/promises";
 import {
   validateImageMeta, validateDateKey,
-  NOTE_IMAGES_MAX, NOTE_IMAGE_BYTES_MAX, ALLOWED_MIME,
+  NOTE_IMAGES_MAX, NOTE_IMAGE_BYTES_MAX,
 } from "@/lib/note-validation";
-import { buildUploadPath, saveUpload } from "@/lib/storage";
+import { buildUploadPath, saveUpload, getUploadsRoot } from "@/lib/storage";
+import path from "node:path";
+
+function bad(error: string, status = 400) {
+  return Response.json({ ok: false, error }, { status });
+}
 
 export async function POST(req: Request) {
-  const user = await requireAuth();
+  const userOrRes = await requireAuthApi();
+  if (userOrRes instanceof Response) return userOrRes;
+  const user = userOrRes;
 
   const form = await req.formData().catch(() => null);
-  if (!form) return Response.json({ ok: false, error: "请求格式错误" }, { status: 400 });
+  if (!form) return bad("请求格式错误");
 
   const date = String(form.get("date") ?? "");
   const dv = validateDateKey(date);
-  if (!dv.ok) return Response.json({ ok: false, error: dv.error }, { status: 400 });
+  if (!dv.ok) return bad(dv.error);
 
   const file = form.get("file");
-  if (!(file instanceof File)) {
-    return Response.json({ ok: false, error: "缺少文件" }, { status: 400 });
-  }
+  if (!(file instanceof File)) return bad("缺少文件");
 
-  const meta = { mimeType: file.type, sizeBytes: file.size };
-  const mv = validateImageMeta(meta);
-  if (!mv.ok) return Response.json({ ok: false, error: mv.error }, { status: 400 });
-
-  // Upsert daily note (auto-create empty content if missing)
-  const note = await prisma.dailyNote.upsert({
-    where: { userId_date: { userId: user.id, date } },
-    update: {},
-    create: { userId: user.id, date, content: "" },
-    include: { images: true },
-  });
-
-  if (note.images.length >= NOTE_IMAGES_MAX) {
-    return Response.json({ ok: false, error: `每条心声最多 ${NOTE_IMAGES_MAX} 张图` }, { status: 400 });
-  }
+  const mv = validateImageMeta({ mimeType: file.type, sizeBytes: file.size });
+  if (!mv.ok) return bad(mv.error);
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  if (buffer.length === 0) {
-    return Response.json({ ok: false, error: "文件为空" }, { status: 400 });
-  }
-  if (buffer.length > NOTE_IMAGE_BYTES_MAX) {
-    return Response.json({ ok: false, error: "单张图片不能超过 5MB" }, { status: 400 });
-  }
+  if (buffer.length === 0) return bad("文件为空");
+  if (buffer.length > NOTE_IMAGE_BYTES_MAX) return bad("单张图片不能超过 5MB");
 
+  // 先写盘（盘失败 → 立即返回，没动 DB）
   const { relPath, absPath } = buildUploadPath(user.id, date, file.type);
-  await saveUpload(absPath, buffer);
+  try {
+    await saveUpload(absPath, buffer);
+  } catch (e) {
+    console.error("upload write failed", e);
+    return bad("文件保存失败", 500);
+  }
 
-  const maxOrder = note.images.reduce((m, i) => Math.max(m, i.sortOrder), -1);
-  const created = await prisma.noteImage.create({
-    data: {
-      noteId: note.id,
-      filePath: relPath,
-      originalName: file.name || "image",
-      sizeBytes: buffer.length,
-      mimeType: file.type,
-      sortOrder: maxOrder + 1,
-    },
-  });
+  // 事务：upsert note + 检查 count + insert image。失败回滚 DB + 删盘
+  try {
+    const created = await prisma.$transaction(async (tx) => {
+      const note = await tx.dailyNote.upsert({
+        where: { userId_date: { userId: user.id, date } },
+        update: {},
+        create: { userId: user.id, date, content: "" },
+        include: { images: true },
+      });
+      if (note.images.length >= NOTE_IMAGES_MAX) {
+        throw Object.assign(new Error("OVER_LIMIT"), { __reason: "OVER_LIMIT" });
+      }
+      const maxOrder = note.images.reduce((m, i) => Math.max(m, i.sortOrder), -1);
+      return tx.noteImage.create({
+        data: {
+          noteId: note.id,
+          filePath: relPath,
+          originalName: file.name || "image",
+          sizeBytes: buffer.length,
+          mimeType: file.type,
+          sortOrder: maxOrder + 1,
+        },
+      });
+    });
 
-  return Response.json({ ok: true, image: { id: created.id, sortOrder: created.sortOrder } });
+    return Response.json({ ok: true, image: { id: created.id, sortOrder: created.sortOrder } });
+  } catch (e) {
+    // 删盘清理（fire-and-forget log）
+    fs.unlink(path.join(getUploadsRoot(), relPath)).catch((err) =>
+      console.error("upload rollback unlink failed", relPath, err)
+    );
+    if (e && (e as { __reason?: string }).__reason === "OVER_LIMIT") {
+      return bad(`每条心声最多 ${NOTE_IMAGES_MAX} 张图`);
+    }
+    console.error("upload tx failed", e);
+    return bad("写入失败", 500);
+  }
 }
 ```
 
 #### Serve route — `src/app/api/uploads/[id]/route.ts`
 
+> 用 `requireAuthApi`（坑点 #1）。MVP 心声圈内可见，Plan 5 加 isPrivate 时再加过滤。
+
 ```typescript
-import { requireAuth } from "@/lib/auth";
+import { requireAuthApi } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { readUpload } from "@/lib/storage";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  await requireAuth();
+  const userOrRes = await requireAuthApi();
+  if (userOrRes instanceof Response) return userOrRes;
+
   const { id: idStr } = await ctx.params;
   const id = Number(idStr);
   if (!Number.isInteger(id)) return new Response("Bad request", { status: 400 });
@@ -688,7 +807,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const img = await prisma.noteImage.findUnique({ where: { id } });
   if (!img) return new Response("Not found", { status: 404 });
 
-  // MVP: 心声目前全圈内可见。Plan 5 加 isPrivate 时在这里加过滤。
   const buf = await readUpload(img.filePath);
   if (!buf) return new Response("Not found on disk", { status: 404 });
 
