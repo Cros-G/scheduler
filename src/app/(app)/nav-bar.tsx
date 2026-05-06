@@ -9,6 +9,7 @@ interface UserLite {
   username: string;
   displayName: string;
   color: string;
+  isAdmin?: boolean;
 }
 
 interface NavBarProps {
@@ -23,6 +24,8 @@ const NAV_LINKS = [
   { label: "任务", href: "/tasks" },
   { label: "设置", href: "/settings" },
 ] as const;
+
+const ADMIN_LINK = { label: "管理员", href: "/admin" } as const;
 
 function isLinkActive(href: string, pathname: string): boolean {
   if (href === "/") return pathname === "/";
@@ -112,7 +115,7 @@ export function NavBar({ currentUser, allUsers }: NavBarProps) {
           align-items: center;
           justify-content: center;
           gap: 2px;
-          overflow: hidden;
+          /* No overflow:hidden — would clip the view-switcher dropdown popup */
         }
 
         /* ── Nav links ───────────────────────────────────────────── */
@@ -141,6 +144,41 @@ export function NavBar({ currentUser, allUsers }: NavBarProps) {
         }
 
         .nb-link[data-active="true"]::after {
+          content: "";
+          position: absolute;
+          bottom: 0;
+          left: 12px;
+          right: 12px;
+          height: 2px;
+          background: oklch(52% 0.12 38);
+          border-radius: 2px 2px 0 0;
+        }
+
+        /* ── Admin link special style ────────────────────────────── */
+        .nb-link-admin {
+          display: inline-flex;
+          align-items: center;
+          padding: 0 12px;
+          height: 52px;
+          font-size: 0.875rem;
+          color: oklch(46% 0.040 38);
+          text-decoration: none;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
+          position: relative;
+          transition: color 0.12s ease;
+        }
+
+        .nb-link-admin:hover {
+          color: oklch(30% 0.06 38);
+        }
+
+        .nb-link-admin[data-active="true"] {
+          color: oklch(34% 0.08 38);
+          font-weight: 500;
+        }
+
+        .nb-link-admin[data-active="true"]::after {
           content: "";
           position: absolute;
           bottom: 0;
@@ -442,6 +480,18 @@ export function NavBar({ currentUser, allUsers }: NavBarProps) {
             </Link>
           ))}
 
+          {/* Admin link — only for admins */}
+          {currentUser.isAdmin && (
+            <Link
+              href={ADMIN_LINK.href}
+              className="nb-link-admin"
+              data-active={isLinkActive(ADMIN_LINK.href, pathname) ? "true" : "false"}
+              aria-current={isLinkActive(ADMIN_LINK.href, pathname) ? "page" : undefined}
+            >
+              {ADMIN_LINK.label}
+            </Link>
+          )}
+
           {/* View switcher — inline with nav on desktop */}
           <div className="nb-dropdown-wrap" style={{ marginLeft: "8px" }}>
             <button
@@ -604,6 +654,19 @@ export function NavBar({ currentUser, allUsers }: NavBarProps) {
             {l.label}
           </Link>
         ))}
+
+        {/* Admin link in mobile drawer — only for admins */}
+        {currentUser.isAdmin && (
+          <Link
+            href={ADMIN_LINK.href}
+            className="nb-mobile-link"
+            data-active={isLinkActive(ADMIN_LINK.href, pathname) ? "true" : "false"}
+            aria-current={isLinkActive(ADMIN_LINK.href, pathname) ? "page" : undefined}
+            style={{ color: "oklch(46% 0.040 38)" }}
+          >
+            {ADMIN_LINK.label}
+          </Link>
+        )}
 
         {/* View switcher section in mobile */}
         <div style={{ padding: "8px 20px 2px", borderTop: "1px solid oklch(90% 0.012 58)", marginTop: "4px" }}>
