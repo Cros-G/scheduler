@@ -18,6 +18,12 @@ export async function requireAuth(): Promise<User> {
   return user;
 }
 
+export async function requireAdmin(): Promise<User> {
+  const user = await requireAuth();
+  if (!user.isAdmin) redirect("/");
+  return user;
+}
+
 export async function requireAuthApi(): Promise<User | Response> {
   const user = await getCurrentUser();
   if (!user) {
