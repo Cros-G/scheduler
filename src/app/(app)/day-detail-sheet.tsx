@@ -21,6 +21,7 @@ interface DayDetailSheetProps {
   tasks: Task[];
   note: NoteData | null | undefined;
   onClose: () => void;
+  readonly?: boolean;
 }
 
 function formatDateDisplay(dateKey: string): string {
@@ -30,17 +31,17 @@ function formatDateDisplay(dateKey: string): string {
   return `${y} 年 ${m} 月 ${d} 日 ${weekdays[dow]}`;
 }
 
-export function DayDetailSheet({ date, occurrences, tasks, note, onClose }: DayDetailSheetProps) {
+export function DayDetailSheet({ date, occurrences, tasks, note, onClose, readonly = false }: DayDetailSheetProps) {
   const [isPending, startTransition] = useTransition();
   const isDirtyRef = useRef(false);
 
-  // Guard: warn user about unsaved changes before closing
+  // Guard: warn user about unsaved changes before closing (skip in readonly mode)
   const safeClose = useCallback(() => {
-    if (isDirtyRef.current) {
+    if (!readonly && isDirtyRef.current) {
       if (!window.confirm("未保存的修改将丢失，是否离开？")) return;
     }
     onClose();
-  }, [onClose]);
+  }, [onClose, readonly]);
 
   function handleDirtyChange(dirty: boolean) {
     isDirtyRef.current = dirty;
@@ -458,7 +459,7 @@ export function DayDetailSheet({ date, occurrences, tasks, note, onClose }: DayD
                         </span>
                       )}
                     </div>
-                    {/* Per-occurrence remove rows */}
+                    {/* Per-occurrence remove rows — delete button hidden in readonly */}
                     <div className="sheet-occ-list">
                       {occ.occurrenceIds.map((oid, i) => (
                         <div key={oid} className="sheet-occ-row">
@@ -467,15 +468,17 @@ export function DayDetailSheet({ date, occurrences, tasks, note, onClose }: DayD
                               ? "✓ 已完成"
                               : `第 ${i + 1} 次`}
                           </span>
-                          <button
-                            className="sheet-remove-btn"
-                            onClick={() => handleRemove(oid)}
-                            disabled={isPending}
-                            aria-label={`删除记录 ${i + 1}`}
-                            title="删除此记录"
-                          >
-                            −
-                          </button>
+                          {!readonly && (
+                            <button
+                              className="sheet-remove-btn"
+                              onClick={() => handleRemove(oid)}
+                              disabled={isPending}
+                              aria-label={`删除记录 ${i + 1}`}
+                              title="删除此记录"
+                            >
+                              −
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -485,53 +488,55 @@ export function DayDetailSheet({ date, occurrences, tasks, note, onClose }: DayD
             )}
           </div>
 
-          {/* 添加 */}
-          <div className="sheet-section">
-            <div className="sheet-section-title">添加</div>
-            {activeTasks.length === 0 ? (
-              <div className="sheet-empty-events">没有活跃任务</div>
-            ) : (
-              <div className="sheet-add-list">
-                {activeTasks.map((task) => {
-                  const existing = occurrences.find((o) => o.taskId === task.id);
-                  const isCheck = task.type === "CHECK";
-                  const isChecked = !!existing;
-                  return (
-                    <div key={task.id} className="sheet-add-row">
-                      <div
-                        className="sheet-event-icon-wrap"
-                        style={{ background: task.color }}
-                      >
-                        {task.icon}
+          {/* 添加 — entire section hidden in readonly */}
+          {!readonly && (
+            <div className="sheet-section">
+              <div className="sheet-section-title">添加</div>
+              {activeTasks.length === 0 ? (
+                <div className="sheet-empty-events">没有活跃任务</div>
+              ) : (
+                <div className="sheet-add-list">
+                  {activeTasks.map((task) => {
+                    const existing = occurrences.find((o) => o.taskId === task.id);
+                    const isCheck = task.type === "CHECK";
+                    const isChecked = !!existing;
+                    return (
+                      <div key={task.id} className="sheet-add-row">
+                        <div
+                          className="sheet-event-icon-wrap"
+                          style={{ background: task.color }}
+                        >
+                          {task.icon}
+                        </div>
+                        <span className="sheet-add-task-name">{task.name}</span>
+                        {isCheck ? (
+                          <button
+                            className={`sheet-add-btn${isChecked ? " check-active" : ""}`}
+                            onClick={() => handleAdd(task)}
+                            disabled={isPending}
+                            title={isChecked ? "取消打卡" : "打卡"}
+                            aria-label={`${isChecked ? "取消打卡" : "打卡"} ${task.name}`}
+                          >
+                            {isChecked ? "✓" : "○"}
+                          </button>
+                        ) : (
+                          <button
+                            className="sheet-add-btn"
+                            onClick={() => handleAdd(task)}
+                            disabled={isPending}
+                            title="添加一次"
+                            aria-label={`添加 ${task.name} 一次`}
+                          >
+                            +
+                          </button>
+                        )}
                       </div>
-                      <span className="sheet-add-task-name">{task.name}</span>
-                      {isCheck ? (
-                        <button
-                          className={`sheet-add-btn${isChecked ? " check-active" : ""}`}
-                          onClick={() => handleAdd(task)}
-                          disabled={isPending}
-                          title={isChecked ? "取消打卡" : "打卡"}
-                          aria-label={`${isChecked ? "取消打卡" : "打卡"} ${task.name}`}
-                        >
-                          {isChecked ? "✓" : "○"}
-                        </button>
-                      ) : (
-                        <button
-                          className="sheet-add-btn"
-                          onClick={() => handleAdd(task)}
-                          disabled={isPending}
-                          title="添加一次"
-                          aria-label={`添加 ${task.name} 一次`}
-                        >
-                          +
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 当日心声 — note editor */}
           <div className="sheet-heartvoice-section">
@@ -542,7 +547,8 @@ export function DayDetailSheet({ date, occurrences, tasks, note, onClose }: DayD
             <NoteEditor
               date={date}
               note={note}
-              onDirtyChange={handleDirtyChange}
+              onDirtyChange={readonly ? undefined : handleDirtyChange}
+              readonly={readonly}
             />
           </div>
         </div>

@@ -28,9 +28,10 @@ interface NoteEditorProps {
   date: string;
   note: NoteData | null | undefined;
   onDirtyChange?: (dirty: boolean) => void;
+  readonly?: boolean;
 }
 
-export function NoteEditor({ date, note, onDirtyChange }: NoteEditorProps) {
+export function NoteEditor({ date, note, onDirtyChange, readonly = false }: NoteEditorProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -408,31 +409,36 @@ export function NoteEditor({ date, note, onDirtyChange }: NoteEditorProps) {
           <textarea
             className="ne-textarea"
             value={currentContent}
-            onChange={handleTextChange}
-            maxLength={NOTE_CONTENT_MAX}
-            placeholder="今天最想说的一句话…"
+            onChange={readonly ? undefined : handleTextChange}
+            readOnly={readonly}
+            maxLength={readonly ? undefined : NOTE_CONTENT_MAX}
+            placeholder={readonly ? "（暂无记录）" : "今天最想说的一句话…"}
             rows={5}
           />
-          <span className={`ne-char-counter${isAtWarning ? " warning" : ""}`}>
-            {charCount}/{NOTE_CONTENT_MAX}
-          </span>
-        </div>
-
-        {/* Save button row */}
-        <div className="ne-save-row">
-          <button
-            className="ne-save-btn"
-            onClick={handleSave}
-            disabled={!dirty || isSavePending}
-          >
-            {isSavePending ? "保存中…" : saveLabel}
-          </button>
-          {saveError && (
-            <span className="ne-save-error" role="alert">
-              {saveError}
+          {!readonly && (
+            <span className={`ne-char-counter${isAtWarning ? " warning" : ""}`}>
+              {charCount}/{NOTE_CONTENT_MAX}
             </span>
           )}
         </div>
+
+        {/* Save button row — hidden in readonly */}
+        {!readonly && (
+          <div className="ne-save-row">
+            <button
+              className="ne-save-btn"
+              onClick={handleSave}
+              disabled={!dirty || isSavePending}
+            >
+              {isSavePending ? "保存中…" : saveLabel}
+            </button>
+            {saveError && (
+              <span className="ne-save-error" role="alert">
+                {saveError}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Image thumbnails */}
         {imageCount > 0 && (
@@ -445,54 +451,61 @@ export function NoteEditor({ date, note, onDirtyChange }: NoteEditorProps) {
                   alt={img.originalName}
                   loading="lazy"
                 />
-                <button
-                  className="ne-img-delete"
-                  onClick={() => handleDeleteImage(img.id)}
-                  disabled={isDeletePending}
-                  aria-label={`删除图片 ${img.originalName}`}
-                  title="删除"
-                >
-                  ×
-                </button>
+                {/* Delete button hidden in readonly */}
+                {!readonly && (
+                  <button
+                    className="ne-img-delete"
+                    onClick={() => handleDeleteImage(img.id)}
+                    disabled={isDeletePending}
+                    aria-label={`删除图片 ${img.originalName}`}
+                    title="删除"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             ))}
           </div>
         )}
 
-        {/* Upload control */}
-        <div className="ne-upload-row">
-          {atImageLimit ? (
-            <span className="ne-upload-limit-note">已达上限 6 张</span>
-          ) : (
-            <button
-              className="ne-upload-btn"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading || isDeletePending}
-              aria-label="上传图片"
-              title={isUploading ? "上传中…" : "添加图片"}
-            >
-              <span className="ne-upload-plus">
-                {isUploading ? "…" : "+"}
+        {/* Upload control — hidden in readonly */}
+        {!readonly && (
+          <div className="ne-upload-row">
+            {atImageLimit ? (
+              <span className="ne-upload-limit-note">已达上限 6 张</span>
+            ) : (
+              <button
+                className="ne-upload-btn"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading || isDeletePending}
+                aria-label="上传图片"
+                title={isUploading ? "上传中…" : "添加图片"}
+              >
+                <span className="ne-upload-plus">
+                  {isUploading ? "…" : "+"}
+                </span>
+                <span>{isUploading ? "上传中" : "添加图片"}</span>
+              </button>
+            )}
+            {uploadError && (
+              <span className="ne-upload-error" role="alert">
+                {uploadError}
               </span>
-              <span>{isUploading ? "上传中" : "添加图片"}</span>
-            </button>
-          )}
-          {uploadError && (
-            <span className="ne-upload-error" role="alert">
-              {uploadError}
-            </span>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
-        {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          style={{ display: "none" }}
-          onChange={handleFileChange}
-          aria-hidden="true"
-        />
+        {/* Hidden file input — only needed in interactive mode */}
+        {!readonly && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+            aria-hidden="true"
+          />
+        )}
       </div>
     </>
   );

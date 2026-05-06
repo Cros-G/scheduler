@@ -25,9 +25,12 @@ interface MonthViewProps {
   occurrencesByDate: Record<string, AggEntry[]>;
   notesByDate: Record<string, NoteData>;
   todayKey: string;
+  readonly?: boolean;
+  /** If provided, shown as "正在看 @username 的日历" banner */
+  viewingUser?: { username: string; displayName: string; color: string } | null;
 }
 
-export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, todayKey }: MonthViewProps) {
+export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, todayKey, readonly = false, viewingUser }: MonthViewProps) {
   const router = useRouter();
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -40,11 +43,19 @@ export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, 
 
   function navTo(delta: number) {
     const { year: ny, month: nm } = shiftMonth(year, month, delta);
-    router.push(`/?y=${ny}&m=${nm}`);
+    if (readonly && viewingUser) {
+      router.push(`/u/${viewingUser.username}?y=${ny}&m=${nm}`);
+    } else {
+      router.push(`/?y=${ny}&m=${nm}`);
+    }
   }
 
   function navToday() {
-    router.push("/");
+    if (readonly && viewingUser) {
+      router.push(`/u/${viewingUser.username}`);
+    } else {
+      router.push("/");
+    }
   }
 
   function showToast(msg: string) {
@@ -53,6 +64,11 @@ export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, 
   }
 
   function handleCellClick(dateKey: string) {
+    // In readonly mode: always open the day detail sheet
+    if (readonly) {
+      setSheetDate(dateKey);
+      return;
+    }
     if (selectedTaskId === null) {
       setSheetDate(dateKey);
       return;
@@ -518,6 +534,37 @@ export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, 
           to   { opacity: 1; transform: translateX(-50%) translateY(0); }
         }
 
+        /* ── Readonly single-column layout ── */
+        .mv-layout.mv-readonly {
+          grid-template-columns: 1fr;
+        }
+
+        /* ── Viewing banner ── */
+        .mv-viewing-banner {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 16px;
+          padding: 8px 14px;
+          background: var(--accent-light);
+          border: 1px solid oklch(82% 0.020 58);
+          border-radius: 5px;
+          font-size: 0.8125rem;
+          color: var(--ink-soft);
+          letter-spacing: 0.03em;
+        }
+
+        .mv-viewing-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .mv-viewing-name {
+          font-weight: 500;
+        }
+
         /* ── Responsive ── */
         @media (max-width: 640px) {
           .mv-root { padding: 16px 12px 48px; }
@@ -534,6 +581,22 @@ export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, 
       `}</style>
 
       <div className="mv-root">
+        {/* ── Viewing banner (readonly mode only) ── */}
+        {readonly && viewingUser && (
+          <div className="mv-viewing-banner">
+            <span
+              className="mv-viewing-dot"
+              style={{ background: viewingUser.color }}
+            />
+            <span>正在看</span>
+            <span className="mv-viewing-name" style={{ color: viewingUser.color }}>
+              {viewingUser.displayName}
+            </span>
+            <span style={{ color: "var(--ink-faint)" }}>@{viewingUser.username}</span>
+            <span>的日历</span>
+          </div>
+        )}
+
         {/* ── Top bar ── */}
         <div className="mv-topbar">
           <button
@@ -558,9 +621,10 @@ export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, 
           </button>
         </div>
 
-        {/* ── Two-column layout ── */}
-        <div className="mv-layout">
-          {/* Task panel */}
+        {/* ── Layout: two-column interactive, single-column readonly ── */}
+        <div className={`mv-layout${readonly ? " mv-readonly" : ""}`}>
+          {/* Task panel — hidden in readonly mode */}
+          {!readonly && (
           <aside className="mv-task-panel" aria-label="任务列表">
             <div className="mv-task-panel-header">选择任务后点击日期</div>
             {tasks.length === 0 ? (
@@ -600,6 +664,7 @@ export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, 
               </div>
             )}
           </aside>
+          )}
 
           {/* Month grid */}
           <div className="mv-grid-wrap" aria-label={`${monthLabel}月历`}>
@@ -733,6 +798,7 @@ export function MonthView({ year, month, tasks, occurrencesByDate, notesByDate, 
           tasks={tasks}
           note={notesByDate[sheetDate] ?? null}
           onClose={() => setSheetDate(null)}
+          readonly={readonly}
         />
       )}
     </>
