@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { buildUploadPath, saveUpload, readUpload, deleteNoteImageFromDisk, getUploadsRoot } from "@/lib/storage";
+import { buildUploadPath, saveUpload, readUpload, deleteNoteImageFromDisk, getUploadsRoot, deleteUserUploadsDir } from "@/lib/storage";
 import path from "node:path";
 import fs from "node:fs/promises";
 
@@ -51,5 +51,23 @@ describe("save / read / delete roundtrip", () => {
 
   it("deleteNoteImageFromDisk on missing file does not throw", async () => {
     await expect(deleteNoteImageFromDisk("nonexistent/x.png")).resolves.toBeUndefined();
+  });
+});
+
+describe("deleteUserUploadsDir", () => {
+  it("removes the user's uploads directory recursively", async () => {
+    const buf = Buffer.from("hello");
+    const { absPath: p1 } = buildUploadPath(42, "2026-05-06", "image/png");
+    const { absPath: p2 } = buildUploadPath(42, "2026-05-06", "image/jpeg");
+    await saveUpload(p1, buf);
+    await saveUpload(p2, buf);
+    await deleteUserUploadsDir(42);
+    // both files should be gone
+    expect(await fs.access(p1).then(() => true).catch(() => false)).toBe(false);
+    expect(await fs.access(p2).then(() => true).catch(() => false)).toBe(false);
+  });
+
+  it("does not throw when dir does not exist", async () => {
+    await expect(deleteUserUploadsDir(99999)).resolves.toBeUndefined();
   });
 });

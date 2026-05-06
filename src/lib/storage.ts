@@ -43,3 +43,10 @@ export async function deleteNoteImageFromDisk(relPath: string): Promise<void> {
     console.error("delete upload failed", relPath, err);
   });
 }
+
+export async function deleteUserUploadsDir(userId: number): Promise<void> {
+  const dir = path.join(getUploadsRoot(), String(userId));
+  await fs.rm(dir, { recursive: true, force: true }).catch((err) => {
+    console.error("delete user uploads dir failed", userId, err);
+  });
+}
