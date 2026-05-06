@@ -1,6 +1,6 @@
 # 日历记账
 
-A self-hosted calendar-based task tracker for small circles (couple, family, close friends). Plan 5 complete — week view (`/week`), multi-user timeline (`/timeline`), per-user readonly calendar (`/u/<username>`), user profile settings (`/settings`), privacy filtering (private tasks hidden from others), and progress badges on COUNTED tasks.
+A self-hosted calendar-based task tracker for small circles (couple, family, close friends). Plan 5.5 complete — admin console (`/admin`) for managing accounts: create, edit, reset password, and delete users via a UI; three self-protections (no delete-self, no demote-self, no remove-last-admin); plus week view (`/week`), multi-user timeline (`/timeline`), per-user readonly calendar (`/u/<username>`), user profile settings (`/settings`), and privacy filtering.
 
 ## Stack
 
@@ -22,15 +22,17 @@ pnpm dev                         # http://localhost:3000
 ## Testing
 
 ```bash
-pnpm test                        # vitest unit + integration (122 tests, 13 files)
-pnpm test:e2e                    # Playwright E2E (47 tests: auth + task CRUD + occurrence/month-view + daily-notes + settings + week-view + multiuser; auto-spawns dev server, runs sequentially)
+pnpm test                        # vitest unit + integration (167 tests, 15 files)
+pnpm test:e2e                    # Playwright E2E (58 tests: auth + task CRUD + occurrence/month-view + daily-notes + settings + week-view + multiuser + admin; auto-spawns dev server, runs sequentially)
 pnpm build                       # production build (type-check + bundle)
 ```
 
 ## CLI utilities
 
+CLI is the fallback for first-deploy provisioning and emergency access. For normal day-to-day account management, use the `/admin` UI.
+
 ```bash
-# Create or upsert a user (used by admin to provision accounts).
+# Create or upsert a user (first-deploy + emergency fallback).
 pnpm seed:user --username <u> --display "<d>" --password "<p>" --color "#hex" [--admin]
 
 # Reset a user's password (also clears all their sessions).
@@ -53,7 +55,8 @@ src/
       tasks/           # /tasks — task list + create/edit form + archive/delete
       occurrences/     # server actions: addOccurrence, removeOccurrence, setCheck
       notes/           # server actions: upsertNote, deleteNoteImage, reorderNoteImages
-      nav-bar.tsx      # top nav: links to all routes, active state, view-switcher dropdown
+      admin/           # /admin — admin-only user management: create/edit/reset-password/delete; three self-protections
+      nav-bar.tsx      # top nav: links to all routes, active state, admin link (admins only), view-switcher dropdown
       note-editor.tsx  # textarea + image grid; readonly prop hides save/upload/delete
     api/
       login/           # POST /api/login
@@ -63,10 +66,11 @@ src/
     db.ts              # Prisma singleton (dev-HMR-safe)
     password.ts        # bcrypt wrappers
     session.ts         # session create/validate/destroy
-    auth.ts            # getCurrentUser / requireAuth / requireAuthApi
+    auth.ts            # getCurrentUser / requireAuth / requireAdmin / requireAuthApi
     task-validation.ts # validateTaskInput + 12-color palette + parseTaskFormData
     note-validation.ts # validateNoteContent / validateImageMeta; NOTE_IMAGES_MAX=6, NOTE_IMAGE_BYTES_MAX=5MB
-    storage.ts         # buildUploadPath / saveUpload / readUpload / deleteNoteImageFromDisk
+    storage.ts         # buildUploadPath / saveUpload / readUpload / deleteNoteImageFromDisk / deleteUserUploadsDir
+    user-validation.ts # validateUsername / validateDisplayName / validatePassword
     dates.ts           # formatDateKey (sv-SE), monthGrid, todayKey, weekRange, monthRange
     visibility.ts      # scopeTasksWhere / scopeOccurrencesWhere — privacy filter helpers
 scripts/               # CLI utilities (seed-user, reset-password)
@@ -91,6 +95,7 @@ See `docs/superpowers/plans/` for execution plans:
 - [x] Plan 3: Month view + occurrence recording — `/` is now month calendar with task panel; CHECK (idempotent toggle) + COUNTED (count badge accumulation); day detail sheet; delete guard blocks tasks with occurrences
 - [x] Plan 4: Daily notes / 心声 — per-day text editor (10000 char cap) + image upload (6 images/day, 5 MB each, jpg/png/webp/gif); auth-gated image serve; transactional DB + disk rollback on failure
 - [x] Plan 5: Views + multi-user — `/week` (7-column week calendar), `/timeline` (all users × days merged), `/u/<username>` (readonly profile view with 404 for missing users, self-redirect to `/`), `/settings` (displayName + color), privacy filter (`isPrivate` tasks hidden from non-owners), progress badges on COUNTED tasks, view-switcher dropdown in nav
+- [x] Plan 5.5: Admin user management — `/admin` console (admin-only, redirects non-admins to `/`); create/edit/reset-password/delete users via UI; three self-protections (no delete-self, no demote-self, no remove-last-admin); reset password invalidates all sessions; delete cascades data and cleans uploads dir; admin nav link visible to admins only; CLI remains for first-deploy + emergency fallback
 - [ ] Plan 6: Docker deployment + backup scripts
 
 For full product specification, see `specifications.md`.
