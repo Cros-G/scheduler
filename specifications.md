@@ -1,7 +1,7 @@
 # 日历记账应用 — 设计规格 (Specifications)
 
-> Last updated: 2026-05-05
-> Status: Draft v1 — pending user review
+> Last updated: 2026-05-06
+> Status: Draft v2 — adds Admin user management UI (Plan 5.5)
 
 ---
 
@@ -34,10 +34,15 @@
 
 | 角色 | 能做什么 |
 |---|---|
-| 管理员（admin） | 创建/删除账号；其余等同普通用户 |
+| 管理员（admin） | 通过 `/admin` 后台 UI 创建/删除/重置密码/切换管理员标记；其余等同普通用户。User.isAdmin = true |
 | 普通用户 | 维护自己的任务（增删改）、记录自己的事件、写自己的心声、查看圈内其他人的公开任务与心声 |
 
-> 账号管理通过 CLI 种子脚本（`scripts/seed-user.ts`），不做后台管理 UI（YAGNI）。
+**首个管理员**：项目首次部署时仍用 CLI（`pnpm seed:user --admin`）创建第一个管理员账号；之后所有账号管理都走 `/admin` 页面。CLI 仍保留作为运维兜底。
+
+**自我保护**：
+- 管理员不能在 `/admin` 里删自己（防止误删后无人能管理系统）
+- 管理员不能取消自己的 admin 标记（同理；要降级自己得让另一个 admin 操作）
+- 系统至少要有一个 admin 账号 —— 删最后一个 admin 时拒绝
 
 ---
 
@@ -132,6 +137,27 @@
 - 心声暂不做私密开关（MVP 简化），全部对圈内可见
   - 注：未来加私密只需一次小迁移，不会破坏现有数据
 
+### 4.8 用户管理（仅管理员）
+
+`/admin` 页面（路由级 guard：非 admin → 403 / 跳 `/`）。
+
+**用户列表**：表格展示所有账号，列出 `用户名`、`昵称`（带颜色 dot）、`是否管理员`、`创建时间`、`操作`。
+
+**创建账号**（"+ 新建账号"按钮）：
+- 字段：`username`（必填，3-30 字，仅字母数字下划线）、`displayName`（必填，≤ 30 字）、`password`（必填，≥ 6 字）、`color`（从 12 色板选）、`isAdmin`（默认 false）
+- 校验：`username` 不能与现有账号重复（已 unique 约束 + UI 友好提示）
+- 后端：调 `createUserAction` → 哈希密码 + insert User
+
+**重置密码**：行内"重置密码"按钮 → 弹框输入新密码（≥ 6 字）→ 调 `resetPasswordAction(userId, newPw)` → 同时清掉该用户所有 Session（强制重登）
+
+**改昵称 / 颜色 / admin 标记**：行内"编辑"按钮 → 弹框/抽屉编辑 → 调 `updateUserAction(userId, fields)`
+- **不允许**改 username（数据完整性，避免破坏 url 引用）
+
+**删除账号**：行内"删除"按钮 → 二次确认（输入 username 验证）→ 调 `deleteUserAction(userId)` → 级联删该用户的所有 Task/Occurrence/DailyNote/NoteImage/Session（已有 Cascade FK）+ 异步清理磁盘上该用户的 uploads 目录
+- 自我保护见 §3：不能删自己；不能删最后一个 admin
+
+**审计**：MVP 不做（spec §14 已经把"audit log"列为非目标）
+
 ---
 
 ## 5. 页面与路由
@@ -145,6 +171,7 @@
 | `/tasks` | 任务管理页（列表 + 创建/编辑） |
 | `/u/[username]` | 看某人的视图（只读） |
 | `/settings` | 个人设置（昵称、颜色、登出） |
+| `/admin` | **仅 admin** — 用户管理（增 / 删 / 重置密码 / 改昵称 / 切换 admin 标记） |
 
 ---
 
@@ -310,13 +337,17 @@ model NoteImage {
 
 ## 11. 账号种子 CLI
 
+CLI 仅用于**首次部署**创建第一个管理员，以及运维兜底（admin 把自己锁死时）。日常账号管理走 `/admin` 页面。
+
 ```bash
-pnpm seed:user --username alice --display "Alice" --password '...' --color '#FF8888' [--admin]
+# 创建首个管理员（必须 --admin）
+pnpm seed:user --username alice --display "Alice" --password '...' --color '#FF8888' --admin
+
+# 兜底重置密码（admin 忘了自己的密码时）
+pnpm seed:reset-password --username alice --password '新密码'
 ```
 
-脚本位于 `scripts/seed-user.ts`，直接连 Prisma 写入。
-
-重置密码：`pnpm seed:reset-password --username alice --password '新密码'`
+脚本位于 `scripts/seed-user.ts` 和 `scripts/reset-password.ts`。
 
 ---
 
@@ -348,7 +379,10 @@ pnpm seed:user --username alice --display "Alice" --password '...' --color '#FF8
 
 明确**不做**的：
 
-- 用户自助注册 / 密码找回 / 邮件
+- 用户自助注册（账号一律由 admin 在 `/admin` 创建）
+- 密码找回 / 邮箱验证 / 邮件
+- 圈子 / 多群组（所有账号默认同一个圈子，互相可见）
+- 用户操作审计日志（admin 删账号 / 重置密码不记录历史）
 - 任务模板 / 社区分享
 - 导出 / 导入数据（备份靠运维层 cron）
 - 推送通知 / 提醒 / Webhooks
