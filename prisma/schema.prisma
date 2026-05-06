@@ -18,6 +18,7 @@ model User {
   sessions     Session[]
   tasks        Task[]
   occurrences  Occurrence[]
+  notes        DailyNote[]
 }
 
 model Session {
@@ -72,4 +73,31 @@ model Occurrence {
 
   @@index([userId, date])
   @@index([taskId, date])
+}
+
+model DailyNote {
+  id        Int         @id @default(autoincrement())
+  userId    Int
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  content   String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  images    NoteImage[]
+
+  @@unique([userId, date])
+}
+
+model NoteImage {
+  id           Int       @id @default(autoincrement())
+  noteId       Int
+  note         DailyNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  filePath     String
+  originalName String
+  sizeBytes    Int
+  mimeType     String
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  @@index([noteId])
 }

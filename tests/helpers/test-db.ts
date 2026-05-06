@@ -25,6 +25,8 @@ export function getTestPrisma(): PrismaClient {
 
 export async function resetTestDb() {
   const p = getTestPrisma();
+  await p.noteImage.deleteMany();
+  await p.dailyNote.deleteMany();
   await p.occurrence.deleteMany();
   await p.session.deleteMany();
   await p.task.deleteMany();
