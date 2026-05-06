@@ -96,8 +96,10 @@ export async function deleteTaskCore(
   if (!existing) return { ok: false, error: "任务不存在" };
   if (existing.userId !== userId) return { ok: false, error: "无权操作" };
 
-  // Plan 3 will add: const count = await prisma.occurrence.count({ where: { taskId } });
-  // if (count > 0) return { ok: false, error: "任务已有记录，无法真删，请改为归档" };
+  const occurrenceCount = await prisma.occurrence.count({ where: { taskId } });
+  if (occurrenceCount > 0) {
+    return { ok: false, error: "任务已有记录，无法真删，请改为归档" };
+  }
 
   const task = await prisma.task.delete({ where: { id: taskId } });
   return { ok: true, task };

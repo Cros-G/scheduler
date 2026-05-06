@@ -25,8 +25,9 @@ export function getTestPrisma(): PrismaClient {
 
 export async function resetTestDb() {
   const p = getTestPrisma();
-  // Clear in dependency order
+  await p.occurrence.deleteMany();
   await p.session.deleteMany();
+  await p.task.deleteMany();
   await p.user.deleteMany();
 }
 

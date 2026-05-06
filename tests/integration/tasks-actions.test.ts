@@ -181,4 +181,22 @@ describe("deleteTaskCore", () => {
     const stillThere = await prisma.task.findUnique({ where: { id: c.task.id } });
     expect(stillThere).not.toBeNull();
   });
+
+  it("有事件的任务不能真删（先归档或清空事件）", async () => {
+    const u = await makeUser();
+    const c = await createTaskCore(u.id, validCounted, prisma);
+    if (!c.ok) throw new Error("setup");
+    await prisma.occurrence.create({
+      data: {
+        taskId: c.task.id,
+        userId: u.id,
+        date: "2026-05-06",
+        count: 1,
+      },
+    });
+    const out = await deleteTaskCore(u.id, c.task.id, prisma);
+    expect(out.ok).toBe(false);
+    const stillThere = await prisma.task.findUnique({ where: { id: c.task.id } });
+    expect(stillThere).not.toBeNull();
+  });
 });
