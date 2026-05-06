@@ -17,3 +17,14 @@ export async function requireAuth(): Promise<User> {
   if (!user) redirect("/login");
   return user;
 }
+
+export async function requireAuthApi(): Promise<User | Response> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "未登录" }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  return user;
+}
