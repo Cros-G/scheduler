@@ -14,6 +14,7 @@ export async function addOccurrenceAction(taskId: number, date: string, delta: n
   const result = await addOccurrenceCore(user.id, taskId, date, delta, prisma);
   if (!result.ok) return { ok: false, error: result.error };
   revalidatePath("/");
+  revalidatePath("/week");
   return { ok: true };
 }
 
@@ -22,6 +23,7 @@ export async function removeOccurrenceAction(occurrenceId: number) {
   const result = await removeOccurrenceCore(user.id, occurrenceId, prisma);
   if (!result.ok) return { ok: false, error: result.error };
   revalidatePath("/");
+  revalidatePath("/week");
   return { ok: true };
 }
 
@@ -30,5 +32,6 @@ export async function setCheckAction(taskId: number, date: string, on: boolean) 
   const result = await setCheckCore(user.id, taskId, date, on, prisma);
   if (!result.ok) return { ok: false, error: result.error };
   revalidatePath("/");
+  revalidatePath("/week");
   return { ok: true };
 }
