@@ -33,12 +33,13 @@ test.describe.serial("月视图 occurrence 流程", () => {
     await loginAsAlice(page);
     // Month label h1 contains "五月 2026"
     await expect(page.locator("h1.mv-month-label")).toContainText("五月 2026");
-    // Today cell should have the 'today' class (day 6)
+    // Today cell should have the 'today' class
     await expect(page.locator(".mv-day-cell.today")).toBeVisible();
-    // Today's day number should be "6"
+    // Today's day number should match the actual current day
+    const todayDay = String(new Date().getDate());
     await expect(
       page.locator(".mv-day-cell.today .mv-day-num span").first()
-    ).toContainText("6");
+    ).toContainText(todayDay);
   });
 
   // ── 2. 空任务面板显示提示 ─────────────────────────────────────────────────
@@ -260,8 +261,9 @@ test.describe.serial("月视图 occurrence 流程", () => {
     const sheet = page.locator('[role="dialog"][aria-label="日期详情"]');
     await expect(sheet).toBeVisible({ timeout: 8000 });
 
-    // Date should mention 5月 6日
-    await expect(sheet.locator(".sheet-date")).toContainText("5 月 6 日");
+    // Date should mention today's date (e.g. "5 月 7 日")
+    const todayDay = String(new Date().getDate());
+    await expect(sheet.locator(".sheet-date")).toContainText(`5 月 ${todayDay} 日`);
 
     // Close sheet via close button
     await sheet.locator('button[aria-label="关闭"]').click();

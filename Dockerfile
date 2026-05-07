@@ -72,9 +72,13 @@ COPY --from=deps /app/node_modules/tinyexec ./node_modules/tinyexec
 
 # tsx for seed CLIs (scripts/seed-user.ts, scripts/reset-password.ts)
 # esbuild + get-tsconfig are runtime deps of tsx; bcryptjs is used by seed-user.ts
+# resolve-pkg-maps is a transitive dep of get-tsconfig (required at CJS load time)
+# @esbuild is the platform-specific native binary package required by esbuild
 COPY --from=deps /app/node_modules/tsx ./node_modules/tsx
 COPY --from=deps /app/node_modules/esbuild ./node_modules/esbuild
+COPY --from=deps /app/node_modules/@esbuild ./node_modules/@esbuild
 COPY --from=deps /app/node_modules/get-tsconfig ./node_modules/get-tsconfig
+COPY --from=deps /app/node_modules/resolve-pkg-maps ./node_modules/resolve-pkg-maps
 COPY --from=deps /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
 # Scripts (seed-user / reset-password)
