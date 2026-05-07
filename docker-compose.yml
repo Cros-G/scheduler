@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      context: .
+    image: scheduler:latest
+    container_name: scheduler-app
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    volumes:
+      - ./prod-data:/data

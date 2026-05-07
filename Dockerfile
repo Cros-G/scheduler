@@ -71,7 +71,11 @@ COPY --from=deps /app/node_modules/nypm ./node_modules/nypm
 COPY --from=deps /app/node_modules/tinyexec ./node_modules/tinyexec
 
 # tsx for seed CLIs (scripts/seed-user.ts, scripts/reset-password.ts)
+# esbuild + get-tsconfig are runtime deps of tsx; bcryptjs is used by seed-user.ts
 COPY --from=deps /app/node_modules/tsx ./node_modules/tsx
+COPY --from=deps /app/node_modules/esbuild ./node_modules/esbuild
+COPY --from=deps /app/node_modules/get-tsconfig ./node_modules/get-tsconfig
+COPY --from=deps /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
 # Scripts (seed-user / reset-password)
 COPY --from=builder /app/scripts ./scripts
