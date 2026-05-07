@@ -1,6 +1,6 @@
 # 日历记账
 
-A self-hosted calendar-based task tracker for small circles (couple, family, close friends). Plan 5.5 complete — admin console (`/admin`) for managing accounts: create, edit, reset password, and delete users via a UI; three self-protections (no delete-self, no demote-self, no remove-last-admin); plus week view (`/week`), multi-user timeline (`/timeline`), per-user readonly calendar (`/u/<username>`), user profile settings (`/settings`), and privacy filtering.
+A self-hosted calendar-based task tracker for small circles (couple, family, close friends). **Feature-complete (Plan 6).** Includes admin console (`/admin`), week/timeline/profile views, daily notes with image upload, and production Docker deployment with automated SQLite backup.
 
 ## Stack
 
@@ -39,10 +39,80 @@ pnpm seed:user --username <u> --display "<d>" --password "<p>" --color "#hex" [-
 pnpm seed:reset-password --username <u> --password "<new>"
 ```
 
+## 部署到自有云服务器
+
+### 一次性准备
+
+```bash
+# 1. 在服务器上拉代码
+git clone <repo> /opt/scheduler
+cd /opt/scheduler
+
+# 2. 复制 env 模板（默认值适用大多数场景）
+cp .env.production.example .env.production
+
+# 3. 构建 + 启动
+docker compose up -d --build
+
+# 4. 创建首个管理员
+docker compose exec app node node_modules/tsx/dist/cli.mjs scripts/seed-user.ts \
+  --username yourname --display "Your Name" --password "..." \
+  --color "#5089C6" --admin
+
+# 5. 在反向代理（Nginx / Caddy）后挂 HTTPS
+#    Caddyfile 示例：
+#    your.domain.com {
+#      reverse_proxy localhost:3000
+#    }
+```
+
+> ⚠ NODE_ENV=production 时 session cookie 带 Secure flag，**必须走 HTTPS** 才能登录。本地 docker 测试可在 .env.production 临时改 NODE_ENV=development。
+
+### 多平台构建（Mac → 云 amd64）
+
+```bash
+docker buildx build --platform linux/amd64 -t scheduler:latest .
+# 或在云服务器上 git pull && docker compose up -d --build 直接本地 build
+```
+
+### 备份
+
+每天 cron 跑 `scripts/backup.sh`，写到 `./backups/scheduler-YYYYMMDD-HHMMSS.tar.gz`，默认保留 14 天。
+
+```bash
+# 试跑一次
+bash scripts/backup.sh
+
+# Crontab：每天凌晨 3 点
+crontab -e
+# 0 3 * * * cd /opt/scheduler && /usr/bin/bash scripts/backup.sh >> /var/log/scheduler-backup.log 2>&1
+```
+
+### 恢复
+
+```bash
+docker compose down
+tar -xzf backups/scheduler-XXXXX.tar.gz -C prod-data/
+mv prod-data/scheduler-snap.db prod-data/scheduler.db
+docker compose up -d
+```
+
+### 升级
+
+```bash
+git pull
+docker compose up -d --build
+# Migration 在 entrypoint 自动跑
+```
+
 ## Project structure
 
 ```
 prisma/                # Prisma schema + migrations
+Dockerfile             # multi-stage build (deps → builder → runner)
+docker-compose.yml     # production compose (app + named volume)
+docker/entrypoint.sh   # runs prisma migrate deploy then starts server
+scripts/backup.sh      # SQLite hot-backup → tar.gz; retains 14 days
 src/
   app/
     login/             # public login page
@@ -96,6 +166,6 @@ See `docs/superpowers/plans/` for execution plans:
 - [x] Plan 4: Daily notes / 心声 — per-day text editor (10000 char cap) + image upload (6 images/day, 5 MB each, jpg/png/webp/gif); auth-gated image serve; transactional DB + disk rollback on failure
 - [x] Plan 5: Views + multi-user — `/week` (7-column week calendar), `/timeline` (all users × days merged), `/u/<username>` (readonly profile view with 404 for missing users, self-redirect to `/`), `/settings` (displayName + color), privacy filter (`isPrivate` tasks hidden from non-owners), progress badges on COUNTED tasks, view-switcher dropdown in nav
 - [x] Plan 5.5: Admin user management — `/admin` console (admin-only, redirects non-admins to `/`); create/edit/reset-password/delete users via UI; three self-protections (no delete-self, no demote-self, no remove-last-admin); reset password invalidates all sessions; delete cascades data and cleans uploads dir; admin nav link visible to admins only; CLI remains for first-deploy + emergency fallback
-- [ ] Plan 6: Docker deployment + backup scripts
+- [x] Plan 6: Docker deployment + backup — multi-stage Dockerfile (Next.js standalone), docker-compose.yml, entrypoint auto-runs migrations, `scripts/backup.sh` (SQLite hot-backup → tar.gz, 14-day retention). **Project feature-complete.**
 
 For full product specification, see `specifications.md`.
