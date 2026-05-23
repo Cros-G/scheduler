@@ -15,6 +15,19 @@ type AggEntry = {
   occurrenceIds: number[];
 };
 
+interface UserLite {
+  id: number;
+  username: string;
+  displayName: string;
+  color: string;
+}
+
+export interface MultiUserDayData {
+  user: UserLite;
+  occurrences: AggEntry[];
+  note: NoteData | null;
+}
+
 interface DayDetailSheetProps {
   date: string; // YYYY-MM-DD
   occurrences: AggEntry[];
@@ -22,6 +35,8 @@ interface DayDetailSheetProps {
   note: NoteData | null | undefined;
   onClose: () => void;
   readonly?: boolean;
+  /** When set, renders multi-user readonly view (used by /timeline) */
+  multiUserData?: MultiUserDayData[];
 }
 
 function formatDateDisplay(dateKey: string): string {
@@ -31,7 +46,7 @@ function formatDateDisplay(dateKey: string): string {
   return `${y} 年 ${m} 月 ${d} 日 ${weekdays[dow]}`;
 }
 
-export function DayDetailSheet({ date, occurrences, tasks, note, onClose, readonly = false }: DayDetailSheetProps) {
+export function DayDetailSheet({ date, occurrences, tasks, note, onClose, readonly = false, multiUserData }: DayDetailSheetProps) {
   const [isPending, startTransition] = useTransition();
   const isDirtyRef = useRef(false);
 
@@ -403,6 +418,75 @@ export function DayDetailSheet({ date, occurrences, tasks, note, onClose, readon
           opacity: 0.7;
           font-size: 0.875rem;
         }
+
+        /* ── Multi-user section (timeline view) ── */
+        .sheet-multi-user-section {
+          margin-top: 20px;
+        }
+
+        .sheet-multi-user-block {
+          margin-bottom: 20px;
+        }
+
+        .sheet-multi-user-header {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          margin-bottom: 10px;
+          padding: 6px 10px;
+          background: oklch(97% 0.008 62);
+          border: 1px solid oklch(88% 0.014 58);
+          border-radius: 5px;
+        }
+
+        .sheet-multi-user-dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .sheet-multi-user-name {
+          font-size: 0.875rem;
+          font-weight: 500;
+          letter-spacing: 0.03em;
+        }
+
+        .sheet-multi-user-at {
+          font-size: 0.75rem;
+          color: oklch(60% 0.016 58);
+          letter-spacing: 0.02em;
+        }
+
+        .sheet-multi-note-wrap {
+          margin-top: 10px;
+        }
+
+        .sheet-multi-note-label {
+          font-size: 0.6875rem;
+          font-weight: 600;
+          color: oklch(60% 0.016 58);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .sheet-multi-empty {
+          font-size: 0.8125rem;
+          color: oklch(60% 0.014 58);
+          font-style: italic;
+          letter-spacing: 0.02em;
+          padding: 4px 0;
+        }
+
+        .sheet-multi-section-divider {
+          height: 1px;
+          background: oklch(88% 0.014 58);
+          margin: 16px 0;
+        }
       `}</style>
 
       {/* Backdrop */}
@@ -433,124 +517,223 @@ export function DayDetailSheet({ date, occurrences, tasks, note, onClose, readon
 
         {/* Body */}
         <div className="sheet-body">
-          {/* 当日事件 */}
-          <div className="sheet-section">
-            <div className="sheet-section-title">当日事件</div>
-            {occurrences.length === 0 ? (
-              <div className="sheet-empty-events">今日暂无记录</div>
-            ) : (
-              occurrences.map((occ) => {
-                const isCheck = occ.type === "CHECK";
-                return (
-                  <div key={occ.taskId} className="sheet-event-group">
-                    <div className="sheet-event-task-row">
-                      <div
-                        className="sheet-event-icon-wrap"
-                        style={{ background: occ.color }}
-                      >
-                        {occ.icon}
-                      </div>
-                      <span className="sheet-event-name">{occ.name}</span>
-                      {isCheck ? (
-                        <span className="sheet-event-check-badge">已打卡</span>
-                      ) : (
-                        <span className="sheet-event-count">
-                          × {occ.totalCount}
-                        </span>
-                      )}
-                    </div>
-                    {/* Per-occurrence remove rows — delete button hidden in readonly */}
-                    <div className="sheet-occ-list">
-                      {occ.occurrenceIds.map((oid, i) => (
-                        <div key={oid} className="sheet-occ-row">
-                          <span className="sheet-occ-label">
-                            {isCheck
-                              ? "✓ 已完成"
-                              : `第 ${i + 1} 次`}
-                          </span>
-                          {!readonly && (
-                            <button
-                              className="sheet-remove-btn"
-                              onClick={() => handleRemove(oid)}
-                              disabled={isPending}
-                              aria-label={`删除记录 ${i + 1}`}
-                              title="删除此记录"
-                            >
-                              −
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          {/* ── Multi-user mode (timeline view) ── */}
+          {multiUserData && multiUserData.length > 0 ? (
+            <div className="sheet-multi-user-section">
+              {multiUserData.map((userData, blockIdx) => (
+                <div key={userData.user.id} className="sheet-multi-user-block">
+                  {blockIdx > 0 && <div className="sheet-multi-section-divider" />}
 
-          {/* 添加 — entire section hidden in readonly */}
-          {!readonly && (
-            <div className="sheet-section">
-              <div className="sheet-section-title">添加</div>
-              {activeTasks.length === 0 ? (
-                <div className="sheet-empty-events">没有活跃任务</div>
-              ) : (
-                <div className="sheet-add-list">
-                  {activeTasks.map((task) => {
-                    const existing = occurrences.find((o) => o.taskId === task.id);
-                    const isCheck = task.type === "CHECK";
-                    const isChecked = !!existing;
-                    return (
-                      <div key={task.id} className="sheet-add-row">
-                        <div
-                          className="sheet-event-icon-wrap"
-                          style={{ background: task.color }}
-                        >
-                          {task.icon}
+                  {/* User header */}
+                  <div className="sheet-multi-user-header">
+                    <span
+                      className="sheet-multi-user-dot"
+                      style={{ background: userData.user.color }}
+                    />
+                    <span
+                      className="sheet-multi-user-name"
+                      style={{ color: userData.user.color }}
+                    >
+                      {userData.user.displayName}
+                    </span>
+                    <span className="sheet-multi-user-at">@{userData.user.username}</span>
+                  </div>
+
+                  {/* That user's events */}
+                  {userData.occurrences.length === 0 ? (
+                    <div className="sheet-multi-empty">暂无事件记录</div>
+                  ) : (
+                    userData.occurrences.map((occ) => {
+                      const isCheck = occ.type === "CHECK";
+                      return (
+                        <div key={occ.taskId} className="sheet-event-group">
+                          <div className="sheet-event-task-row">
+                            <div
+                              className="sheet-event-icon-wrap"
+                              style={{ background: occ.color }}
+                            >
+                              {occ.icon}
+                            </div>
+                            <span className="sheet-event-name">{occ.name}</span>
+                            {isCheck ? (
+                              <span className="sheet-event-check-badge">已打卡</span>
+                            ) : (
+                              <span className="sheet-event-count">× {occ.totalCount}</span>
+                            )}
+                          </div>
+                          <div className="sheet-occ-list">
+                            {occ.occurrenceIds.map((oid, i) => (
+                              <div key={oid} className="sheet-occ-row">
+                                <span className="sheet-occ-label">
+                                  {isCheck ? "✓ 已完成" : `第 ${i + 1} 次`}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        <span className="sheet-add-task-name">{task.name}</span>
-                        {isCheck ? (
-                          <button
-                            className={`sheet-add-btn${isChecked ? " check-active" : ""}`}
-                            onClick={() => handleAdd(task)}
-                            disabled={isPending}
-                            title={isChecked ? "取消打卡" : "打卡"}
-                            aria-label={`${isChecked ? "取消打卡" : "打卡"} ${task.name}`}
-                          >
-                            {isChecked ? "✓" : "○"}
-                          </button>
-                        ) : (
-                          <button
-                            className="sheet-add-btn"
-                            onClick={() => handleAdd(task)}
-                            disabled={isPending}
-                            title="添加一次"
-                            aria-label={`添加 ${task.name} 一次`}
-                          >
-                            +
-                          </button>
-                        )}
+                      );
+                    })
+                  )}
+
+                  {/* That user's note */}
+                  {userData.note && (
+                    (userData.note.content && userData.note.content.length > 0) ||
+                    userData.note.images.length > 0
+                  ) && (
+                    <div className="sheet-multi-note-wrap">
+                      <div className="sheet-multi-note-label">
+                        <span style={{ opacity: 0.7, fontSize: "0.875rem" }}>✎</span>
+                        心声
                       </div>
-                    );
-                  })}
+                      <NoteEditor
+                        date={date}
+                        note={userData.note}
+                        readonly={true}
+                      />
+                    </div>
+                  )}
                 </div>
+              ))}
+
+              {/* If all users have no events and no notes */}
+              {multiUserData.every(
+                (d) =>
+                  d.occurrences.length === 0 &&
+                  (!d.note ||
+                    ((!d.note.content || d.note.content.length === 0) &&
+                      d.note.images.length === 0))
+              ) && (
+                <div className="sheet-multi-empty">今日暂无记录</div>
               )}
             </div>
-          )}
-
-          {/* 当日心声 — note editor */}
-          <div className="sheet-heartvoice-section">
-            <div className="sheet-heartvoice-title">
-              <span className="sheet-heartvoice-quill">✎</span>
-              当日心声
+          ) : multiUserData ? (
+            /* multiUserData provided but empty — no events for any user */
+            <div className="sheet-section">
+              <div className="sheet-empty-events">今日暂无记录</div>
             </div>
-            <NoteEditor
-              date={date}
-              note={note}
-              onDirtyChange={readonly ? undefined : handleDirtyChange}
-              readonly={readonly}
-            />
-          </div>
+          ) : (
+            /* ── Single-user mode (existing behavior) ── */
+            <>
+              {/* 当日事件 */}
+              <div className="sheet-section">
+                <div className="sheet-section-title">当日事件</div>
+                {occurrences.length === 0 ? (
+                  <div className="sheet-empty-events">今日暂无记录</div>
+                ) : (
+                  occurrences.map((occ) => {
+                    const isCheck = occ.type === "CHECK";
+                    return (
+                      <div key={occ.taskId} className="sheet-event-group">
+                        <div className="sheet-event-task-row">
+                          <div
+                            className="sheet-event-icon-wrap"
+                            style={{ background: occ.color }}
+                          >
+                            {occ.icon}
+                          </div>
+                          <span className="sheet-event-name">{occ.name}</span>
+                          {isCheck ? (
+                            <span className="sheet-event-check-badge">已打卡</span>
+                          ) : (
+                            <span className="sheet-event-count">
+                              × {occ.totalCount}
+                            </span>
+                          )}
+                        </div>
+                        {/* Per-occurrence remove rows — delete button hidden in readonly */}
+                        <div className="sheet-occ-list">
+                          {occ.occurrenceIds.map((oid, i) => (
+                            <div key={oid} className="sheet-occ-row">
+                              <span className="sheet-occ-label">
+                                {isCheck
+                                  ? "✓ 已完成"
+                                  : `第 ${i + 1} 次`}
+                              </span>
+                              {!readonly && (
+                                <button
+                                  className="sheet-remove-btn"
+                                  onClick={() => handleRemove(oid)}
+                                  disabled={isPending}
+                                  aria-label={`删除记录 ${i + 1}`}
+                                  title="删除此记录"
+                                >
+                                  −
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* 添加 — entire section hidden in readonly */}
+              {!readonly && (
+                <div className="sheet-section">
+                  <div className="sheet-section-title">添加</div>
+                  {activeTasks.length === 0 ? (
+                    <div className="sheet-empty-events">没有活跃任务</div>
+                  ) : (
+                    <div className="sheet-add-list">
+                      {activeTasks.map((task) => {
+                        const existing = occurrences.find((o) => o.taskId === task.id);
+                        const isCheck = task.type === "CHECK";
+                        const isChecked = !!existing;
+                        return (
+                          <div key={task.id} className="sheet-add-row">
+                            <div
+                              className="sheet-event-icon-wrap"
+                              style={{ background: task.color }}
+                            >
+                              {task.icon}
+                            </div>
+                            <span className="sheet-add-task-name">{task.name}</span>
+                            {isCheck ? (
+                              <button
+                                className={`sheet-add-btn${isChecked ? " check-active" : ""}`}
+                                onClick={() => handleAdd(task)}
+                                disabled={isPending}
+                                title={isChecked ? "取消打卡" : "打卡"}
+                                aria-label={`${isChecked ? "取消打卡" : "打卡"} ${task.name}`}
+                              >
+                                {isChecked ? "✓" : "○"}
+                              </button>
+                            ) : (
+                              <button
+                                className="sheet-add-btn"
+                                onClick={() => handleAdd(task)}
+                                disabled={isPending}
+                                title="添加一次"
+                                aria-label={`添加 ${task.name} 一次`}
+                              >
+                                +
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 当日心声 — note editor */}
+              <div className="sheet-heartvoice-section">
+                <div className="sheet-heartvoice-title">
+                  <span className="sheet-heartvoice-quill">✎</span>
+                  当日心声
+                </div>
+                <NoteEditor
+                  date={date}
+                  note={note}
+                  onDirtyChange={readonly ? undefined : handleDirtyChange}
+                  readonly={readonly}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
     </>

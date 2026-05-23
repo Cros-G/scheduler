@@ -101,25 +101,28 @@ test.describe.serial("多人视图 + 私密过滤", () => {
     expect(resp?.status()).toBe(404);
   });
 
-  test("Alice 访问 /timeline → 显示合并视图（含双用户行）", async ({ page }) => {
+  test("Alice 访问 /timeline → 显示合并视图（含用户图例）", async ({ page }) => {
     await loginAlice(page);
     await page.goto("/timeline");
     await page.waitForLoadState("networkidle");
-    // Timeline has the subtitle element
-    await expect(page.locator(".tl-subtitle")).toBeVisible({ timeout: 5000 });
-    // Both users should appear in timeline user labels
-    await expect(page.locator(".tl-user-at").filter({ hasText: "@e2e_alice" })).toBeVisible({ timeout: 5000 });
-    await expect(page.locator(".tl-user-at").filter({ hasText: "@e2e_bob" })).toBeVisible({ timeout: 5000 });
+    // Timeline period label visible ("五月 2026" etc.)
+    await expect(page.locator(".tl-period-label").first()).toBeVisible({ timeout: 5000 });
+    // User legend shows both users (new calendar grid layout, shows displayName)
+    await expect(page.locator(".tl-legend-chip").first()).toBeVisible({ timeout: 5000 });
+    const legendCount = await page.locator(".tl-legend-chip").count();
+    expect(legendCount).toBeGreaterThanOrEqual(2);
+    // Calendar grid visible
+    await expect(page.locator(".tl-cal-grid").first()).toBeVisible({ timeout: 5000 });
   });
 
-  test("Alice 在 timeline 看到自己的私密任务标记（私密任务不暴露给 Bob）", async ({ page }) => {
+  test("Alice 在 timeline 看到日历合并视图（不再是按行排列）", async ({ page }) => {
     await loginAlice(page);
     await page.goto("/timeline");
     await page.waitForLoadState("networkidle");
-    // Alice is the viewer — she can see her own private tasks (if there were occurrences)
-    // The page itself should load with both rows visible
-    const aliceRow = page.locator(".tl-user-row").filter({ has: page.locator(".tl-user-at", { hasText: "@e2e_alice" }) });
-    await expect(aliceRow).toBeVisible();
+    // New layout: calendar grid with 42 cells (month mode), no per-user rows
+    await expect(page.locator(".tl-cal-grid").first()).toBeVisible({ timeout: 5000 });
+    // User legend (not per-row labels) should be visible
+    await expect(page.locator(".tl-legend").first()).toBeVisible({ timeout: 5000 });
   });
 
   test("View switcher dropdown 列出 圈友 e2e_bob", async ({ page }) => {

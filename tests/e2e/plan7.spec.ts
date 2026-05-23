@@ -26,11 +26,12 @@ test.describe.serial("Plan 7: timeline period + emoji manage + stats", () => {
     await page.goto("/timeline");
     // .tl-period-label is the period heading ("五月 2026" etc.)
     await expect(page.locator(".tl-period-label").first()).toBeVisible({ timeout: 8000 });
-    // Month mode has many narrow header cells; week mode has wide ones
+    // New calendar grid: weekday headers are exactly 7 (Mon-Sun)
     const headerCells = page.locator(".tl-header-day-cell");
     const count = await headerCells.count();
-    // A full month has 28–31 day columns (plus the user-col is not a .tl-header-day-cell)
-    expect(count).toBeGreaterThanOrEqual(28);
+    expect(count).toBe(7);
+    // The calendar grid itself exists
+    await expect(page.locator(".tl-cal-grid").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("timeline period toggle 月/周 按钮存在", async ({ page }) => {
@@ -49,10 +50,14 @@ test.describe.serial("Plan 7: timeline period + emoji manage + stats", () => {
     await loginAlice(page);
     await page.goto("/timeline?period=week");
     await expect(page).toHaveURL(/period=week/);
-    // Week mode renders exactly 7 .tl-header-day-cell with class week-header
+    // Week mode renders exactly 7 weekday header cells with class week-header
     const weekHeaders = page.locator(".tl-header-day-cell.week-header");
     const count = await weekHeaders.count();
     expect(count).toBe(7);
+    // Week mode renders 7 .tl-day-cell.week-cell
+    const weekCells = page.locator(".tl-day-cell.week-cell");
+    const cellCount = await weekCells.count();
+    expect(cellCount).toBe(7);
     // "周" toggle button is active (aria-pressed=true)
     const weekBtn = page.locator(".tl-toggle-btn").filter({ hasText: "周" });
     await expect(weekBtn).toHaveAttribute("aria-pressed", "true");
@@ -75,10 +80,12 @@ test.describe.serial("Plan 7: timeline period + emoji manage + stats", () => {
     await monthBtn.click();
     // URL should no longer contain period=week
     await expect(page).not.toHaveURL(/period=week/, { timeout: 8000 });
-    // Month mode: 28+ day header cells
+    // Month mode: exactly 7 weekday header cells (Mon-Sun)
     const headerCells = page.locator(".tl-header-day-cell");
     const count = await headerCells.count();
-    expect(count).toBeGreaterThanOrEqual(28);
+    expect(count).toBe(7);
+    // Calendar grid visible
+    await expect(page.locator(".tl-cal-grid").first()).toBeVisible({ timeout: 8000 });
   });
 
   // ── Emoji manage ─────────────────────────────────────────────────
