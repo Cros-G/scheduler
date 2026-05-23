@@ -15,11 +15,18 @@ const PERIOD_LABEL: Record<string, string> = {
   MONTH: "每月",
 };
 
-interface ActiveTaskCardProps {
-  task: Task;
+interface CustomCategory {
+  id: number;
+  name: string;
+  emojis: Array<{ id: number; emoji: string }>;
 }
 
-export function ActiveTaskCard({ task }: ActiveTaskCardProps) {
+interface ActiveTaskCardProps {
+  task: Task;
+  customCategories: CustomCategory[];
+}
+
+export function ActiveTaskCard({ task, customCategories }: ActiveTaskCardProps) {
   const [editing, setEditing] = useState(false);
 
   const targetSummary =
@@ -113,7 +120,7 @@ export function ActiveTaskCard({ task }: ActiveTaskCardProps) {
       {/* Inline edit form */}
       {editing && (
         <div style={{ marginTop: 8 }}>
-          <TaskForm mode="edit" task={task} onClose={() => setEditing(false)} />
+          <TaskForm mode="edit" task={task} onClose={() => setEditing(false)} customCategories={customCategories} />
         </div>
       )}
     </li>

@@ -1,14 +1,18 @@
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { TasksClient } from "./tasks-client";
+import { listCategoriesCore } from "../emojis/actions-core";
 
 export default async function TasksPage() {
   const user = await requireAuth();
 
-  const tasks = await prisma.task.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-  });
+  const [tasks, customCategories] = await Promise.all([
+    prisma.task.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+    }),
+    listCategoriesCore(user.id, prisma),
+  ]);
 
   const active = tasks.filter((t) => !t.archivedAt);
   const archived = tasks.filter((t) => !!t.archivedAt);
@@ -77,7 +81,15 @@ export default async function TasksPage() {
           </p>
         </div>
 
-        <TasksClient active={active} archived={archived} />
+        <TasksClient
+          active={active}
+          archived={archived}
+          customCategories={customCategories.map((c) => ({
+            id: c.id,
+            name: c.name,
+            emojis: c.emojis.map((e) => ({ id: e.id, emoji: e.emoji })),
+          }))}
+        />
       </div>
     </>
   );

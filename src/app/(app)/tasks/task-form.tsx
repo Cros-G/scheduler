@@ -8,15 +8,22 @@ import type { Task } from "@prisma/client";
 
 type FormMode = "create" | "edit";
 
+interface CustomCategory {
+  id: number;
+  name: string;
+  emojis: Array<{ id: number; emoji: string }>;
+}
+
 interface TaskFormProps {
   mode: FormMode;
   task?: Task; // provided in edit mode
   onClose: () => void;
+  customCategories: CustomCategory[];
 }
 
 type ActionState = { ok: boolean; error?: string } | null;
 
-export function TaskForm({ mode, task, onClose }: TaskFormProps) {
+export function TaskForm({ mode, task, onClose, customCategories }: TaskFormProps) {
   const isEdit = mode === "edit";
 
   // Local controlled state for fields that drive UI changes
@@ -158,7 +165,7 @@ export function TaskForm({ mode, task, onClose }: TaskFormProps) {
             {/* Icon */}
             <div style={{ ...fieldStyle, flexShrink: 0 }}>
               <label style={labelStyle}>图标</label>
-              <EmojiPicker value={icon} onChange={setIcon} />
+              <EmojiPicker value={icon} onChange={setIcon} customCategories={customCategories} />
             </div>
 
             {/* Color palette */}

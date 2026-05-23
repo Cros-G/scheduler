@@ -5,12 +5,19 @@ import type { Task } from "@prisma/client";
 import { TaskForm } from "./task-form";
 import { ActiveTaskCard, ArchivedTaskRow } from "./task-card";
 
+interface CustomCategory {
+  id: number;
+  name: string;
+  emojis: Array<{ id: number; emoji: string }>;
+}
+
 interface TasksClientProps {
   active: Task[];
   archived: Task[];
+  customCategories: CustomCategory[];
 }
 
-export function TasksClient({ active, archived }: TasksClientProps) {
+export function TasksClient({ active, archived, customCategories }: TasksClientProps) {
   const [creating, setCreating] = useState(false);
 
   return (
@@ -35,7 +42,7 @@ export function TasksClient({ active, archived }: TasksClientProps) {
 
       {/* ── Create form or trigger button ── */}
       {creating ? (
-        <TaskForm mode="create" onClose={() => setCreating(false)} />
+        <TaskForm mode="create" onClose={() => setCreating(false)} customCategories={customCategories} />
       ) : (
         <div style={{ marginBottom: 28 }}>
           <button
@@ -79,7 +86,7 @@ export function TasksClient({ active, archived }: TasksClientProps) {
         ) : (
           <ul style={{ padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
             {active.map((task) => (
-              <ActiveTaskCard key={task.id} task={task} />
+              <ActiveTaskCard key={task.id} task={task} customCategories={customCategories} />
             ))}
           </ul>
         )}
