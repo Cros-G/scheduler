@@ -357,7 +357,7 @@ function Heatmap({
                 fill={BUCKET_COLORS[bucket]}
                 rx="2"
               >
-                <title>{parseInt(mm)}月{parseInt(dd)}日: {day.totalCount} 次</title>
+                <title>{`${parseInt(mm)}月${parseInt(dd)}日: ${day.totalCount} 次`}</title>
               </rect>
             );
           })}
@@ -451,7 +451,7 @@ function Heatmap({
               fill={BUCKET_COLORS[bucket]}
               rx="1.5"
             >
-              <title>{parseInt(mm)}月{parseInt(dd)}日: {day.totalCount} 次</title>
+              <title>{`${parseInt(mm)}月${parseInt(dd)}日: ${day.totalCount} 次`}</title>
             </rect>
           );
         })}
