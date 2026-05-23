@@ -21,6 +21,7 @@ const NAV_LINKS = [
   { label: "月历", href: "/" },
   { label: "周历", href: "/week" },
   { label: "时间轴", href: "/timeline" },
+  { label: "统计", href: "/stats" },
   { label: "任务", href: "/tasks" },
   { label: "设置", href: "/settings" },
 ] as const;
