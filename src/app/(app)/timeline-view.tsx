@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Task } from "@prisma/client";
-import { CHINESE_MONTHS, monthGrid, shiftMonth } from "@/lib/dates";
+import { CHINESE_MONTHS, WEEKDAY_LABELS_CN } from "@/lib/dates";
 import { DayDetailSheet } from "./day-detail-sheet";
 import type { NoteData } from "./note-editor";
 
@@ -25,8 +25,11 @@ interface UserLite {
 }
 
 interface TimelineViewProps {
-  year: number;
-  month: number;
+  period: "month" | "week";
+  /** Anchor date YYYY-MM-DD. For month mode it's always the 1st of the month. */
+  anchorKey: string;
+  rangeStart: string; // YYYY-MM-DD
+  rangeEnd: string;   // YYYY-MM-DD
   viewerId: number;
   allUsers: UserLite[];
   tasks: Task[];
@@ -43,19 +46,62 @@ interface SheetState {
   readonly: boolean;
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
-function formatDay(year: number, month: number, day: number): string {
-  const mm = String(month).padStart(2, "0");
-  const dd = String(day).padStart(2, "0");
-  return `${year}-${mm}-${dd}`;
+function fmtKey(y: number, m: number, d: number): string {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
+/** Shift a YYYY-MM-DD by N days */
+function shiftDate(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(y, m - 1, d + days);
+  return fmtKey(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
+/** Build ordered day keys for month mode */
+function buildMonthColumns(anchorKey: string): { key: string; label: string }[] {
+  const [y, m] = anchorKey.split("-").map(Number);
+  const n = daysInMonth(y, m);
+  return Array.from({ length: n }, (_, i) => {
+    const day = i + 1;
+    return { key: fmtKey(y, m, day), label: String(day) };
+  });
+}
+
+/** Build ordered day keys for week mode (Mon→Sun) */
+function buildWeekColumns(rangeStart: string): { key: string; label: string }[] {
+  const [y, m, d] = rangeStart.split("-").map(Number);
+  return Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(y, m - 1, d + i);
+    const mo = date.getMonth() + 1;
+    const dy = date.getDate();
+    return {
+      key: fmtKey(date.getFullYear(), mo, dy),
+      label: `${String(mo).padStart(2, "0")}/${String(dy).padStart(2, "0")}`,
+    };
+  });
+}
+
+/** "5 月 4 日 — 10 日" or cross-month "5 月 30 日 — 6 月 5 日" */
+function weekLabel(start: string, end: string): string {
+  const [, sm, sd] = start.split("-").map(Number);
+  const [, em, ed] = end.split("-").map(Number);
+  if (sm === em) return `${sm} 月 ${sd} 日 — ${ed} 日`;
+  return `${sm} 月 ${sd} 日 — ${em} 月 ${ed} 日`;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function TimelineView({
-  year,
-  month,
+  period,
+  anchorKey,
+  rangeStart,
+  rangeEnd,
   viewerId,
   allUsers,
   tasks,
@@ -66,54 +112,88 @@ export function TimelineView({
   const router = useRouter();
   const [sheetState, setSheetState] = useState<SheetState | null>(null);
 
-  const numDays = daysInMonth(year, month);
-  const monthLabel = `${CHINESE_MONTHS[month - 1]} ${year}`;
-  const todayParts = todayKey.split("-").map(Number);
-  const todayInMonth =
-    todayParts[0] === year && todayParts[1] === month ? todayParts[2] : null;
+  // ── Column definitions ───────────────────────────────────────────────────
+  const columns =
+    period === "week"
+      ? buildWeekColumns(rangeStart)
+      : buildMonthColumns(anchorKey);
 
-  function navTo(delta: number) {
-    const { year: ny, month: nm } = shiftMonth(year, month, delta);
-    router.push(`/timeline?y=${ny}&m=${nm}`);
+  // ── Labels ───────────────────────────────────────────────────────────────
+  const [ay, am] = anchorKey.split("-").map(Number);
+  const periodLabel =
+    period === "week"
+      ? weekLabel(rangeStart, rangeEnd)
+      : `${CHINESE_MONTHS[am - 1]} ${ay}`;
+
+  // ── Navigation ───────────────────────────────────────────────────────────
+  function navPrev() {
+    if (period === "week") {
+      const prev = shiftDate(rangeStart, -7);
+      router.push(`/timeline?period=week&d=${prev}`);
+    } else {
+      const total = ay * 12 + (am - 1) - 1;
+      const ny = Math.floor(total / 12);
+      const nm = (total % 12) + 1;
+      router.push(`/timeline?y=${ny}&m=${nm}`);
+    }
+  }
+
+  function navNext() {
+    if (period === "week") {
+      const next = shiftDate(rangeStart, 7);
+      router.push(`/timeline?period=week&d=${next}`);
+    } else {
+      const total = ay * 12 + (am - 1) + 1;
+      const ny = Math.floor(total / 12);
+      const nm = (total % 12) + 1;
+      router.push(`/timeline?y=${ny}&m=${nm}`);
+    }
   }
 
   function navToday() {
-    router.push("/timeline");
+    if (period === "week") {
+      router.push(`/timeline?period=week`);
+    } else {
+      router.push("/timeline");
+    }
   }
 
-  function handleCellClick(userId: number, day: number) {
-    const dateKey = formatDay(year, month, day);
+  // ── Toggle period ────────────────────────────────────────────────────────
+  function switchToMonth() {
+    // Use first day of rangeStart's month as anchor
+    const [y, m] = rangeStart.split("-").map(Number);
+    router.push(`/timeline?y=${y}&m=${m}`);
+  }
+
+  function switchToWeek() {
+    // Use rangeStart (first day of current range) as anchor
+    router.push(`/timeline?period=week&d=${rangeStart}`);
+  }
+
+  // ── Cell click ───────────────────────────────────────────────────────────
+  function handleCellClick(userId: number, dateKey: string) {
     const isOwn = userId === viewerId;
     setSheetState({ date: dateKey, userId, readonly: !isOwn });
   }
 
-  // Get tasks for a given user
-  function getUserTasks(userId: number): Task[] {
-    return tasks.filter((t) => t.userId === userId);
-  }
-
-  // Get note for a user on a day
-  function getUserNote(userId: number, dateKey: string): NoteData | null {
-    return notesByUserDate[userId]?.[dateKey] ?? null;
-  }
-
-  // Get occurrences for a user on a day
+  // ── Data helpers ─────────────────────────────────────────────────────────
   function getUserOccs(userId: number, dateKey: string): AggEntry[] {
     return occurrencesByUserDate[userId]?.[dateKey] ?? [];
   }
 
-  // For the sheet: get all user occurrences for the date (as AggEntry[])
-  const sheetOccs = sheetState
-    ? getUserOccs(sheetState.userId, sheetState.date)
-    : [];
-  const sheetNote = sheetState
-    ? getUserNote(sheetState.userId, sheetState.date)
-    : null;
+  function getUserNote(userId: number, dateKey: string): NoteData | null {
+    return notesByUserDate[userId]?.[dateKey] ?? null;
+  }
+
+  const sheetOccs = sheetState ? getUserOccs(sheetState.userId, sheetState.date) : [];
+  const sheetNote = sheetState ? getUserNote(sheetState.userId, sheetState.date) : null;
   const sheetUserTasks = sheetState
     ? sheetState.readonly
-      ? [] // no tasks needed for readonly (add section is hidden)
-      : getUserTasks(sheetState.userId)
+      ? []
+      : tasks.filter((t) => t.userId === sheetState.userId)
     : [];
+
+  const isWeek = period === "week";
 
   return (
     <>
@@ -148,9 +228,10 @@ export function TimelineView({
           align-items: center;
           gap: 12px;
           margin-bottom: 8px;
+          flex-wrap: wrap;
         }
 
-        .tl-month-label {
+        .tl-period-label {
           font-family: "Hiragino Mincho ProN", "Source Han Serif CN", "Noto Serif CJK SC", "SimSun", serif;
           font-size: 1.5rem;
           font-weight: 400;
@@ -201,6 +282,48 @@ export function TimelineView({
           background: oklch(96% 0.016 62);
         }
 
+        /* ── Period toggle group ── */
+        .tl-period-toggle {
+          display: inline-flex;
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          overflow: hidden;
+          margin-left: auto;
+          flex-shrink: 0;
+        }
+
+        .tl-toggle-btn {
+          padding: 5px 14px;
+          font-size: 0.8125rem;
+          font-family: inherit;
+          letter-spacing: 0.04em;
+          cursor: pointer;
+          border: none;
+          background: transparent;
+          color: var(--ink-soft);
+          transition: background 0.12s, color 0.12s;
+          white-space: nowrap;
+        }
+
+        .tl-toggle-btn + .tl-toggle-btn {
+          border-left: 1px solid var(--border);
+        }
+
+        .tl-toggle-btn:hover {
+          background: oklch(95% 0.014 62);
+          color: var(--ink);
+        }
+
+        .tl-toggle-btn.active {
+          background: var(--accent);
+          color: oklch(99% 0.004 62);
+          font-weight: 500;
+        }
+
+        .tl-toggle-btn.active:hover {
+          background: var(--accent-hover);
+        }
+
         /* ── Sub-label ── */
         .tl-subtitle {
           font-size: 0.8125rem;
@@ -220,7 +343,6 @@ export function TimelineView({
 
         /* ── The actual table ── */
         .tl-table {
-          /* User label col (fixed) + N day cols */
           display: grid;
           min-width: max-content;
         }
@@ -247,6 +369,7 @@ export function TimelineView({
           z-index: 2;
         }
 
+        /* Month mode header cells */
         .tl-header-day-cell {
           padding: 8px 0 7px;
           background: var(--ghost);
@@ -260,10 +383,38 @@ export function TimelineView({
           min-width: 32px;
         }
 
+        /* Week mode header cells */
+        .tl-header-day-cell.week-header {
+          min-width: 130px;
+          padding: 8px 8px 7px;
+          text-align: left;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .tl-header-day-cell.week-header .wh-weekday {
+          font-size: 0.6875rem;
+          font-weight: 700;
+          color: var(--ink-faint);
+          letter-spacing: 0.08em;
+        }
+
+        .tl-header-day-cell.week-header .wh-date {
+          font-size: 0.6875rem;
+          color: var(--ink-faint);
+          opacity: 0.8;
+        }
+
         .tl-header-day-cell.today-col {
           color: var(--accent);
           font-weight: 700;
           background: oklch(95% 0.024 60);
+        }
+
+        .tl-header-day-cell.today-col .wh-weekday,
+        .tl-header-day-cell.today-col .wh-date {
+          color: var(--accent);
         }
 
         .tl-header-day-cell:last-child {
@@ -337,7 +488,7 @@ export function TimelineView({
           flex-shrink: 0;
         }
 
-        /* Day cells within a user row */
+        /* ── Day cells: month mode (compact) ── */
         .tl-day-cell {
           padding: 4px 3px;
           border-bottom: 1px solid var(--border);
@@ -366,7 +517,6 @@ export function TimelineView({
           background: oklch(95% 0.016 62);
         }
 
-        /* Today's column accent — applied via inline style on each cell in that column */
         .tl-day-cell.today-col {
           background: oklch(96% 0.022 60);
         }
@@ -375,7 +525,6 @@ export function TimelineView({
           background: oklch(92% 0.030 60);
         }
 
-        /* Today border — shown on first user row cell for clarity */
         .tl-day-cell.today-col::before {
           content: "";
           position: absolute;
@@ -384,13 +533,27 @@ export function TimelineView({
           pointer-events: none;
         }
 
-        /* Icon chips — very compact */
+        /* ── Day cells: week mode (wide) ── */
+        .tl-day-cell.week-cell {
+          min-width: 130px;
+          min-height: 88px;
+          padding: 6px 8px 8px;
+          align-items: flex-start;
+          justify-content: flex-start;
+          gap: 4px;
+        }
+
+        /* ── Icon chips — very compact ── */
         .tl-icons-area {
           display: flex;
           flex-wrap: wrap;
           justify-content: center;
           gap: 2px;
           width: 100%;
+        }
+
+        .tl-day-cell.week-cell .tl-icons-area {
+          justify-content: flex-start;
         }
 
         .tl-icon-chip {
@@ -404,6 +567,12 @@ export function TimelineView({
           line-height: 1;
         }
 
+        .tl-day-cell.week-cell .tl-icon-chip {
+          font-size: 0.9375rem;
+          padding: 2px 5px 2px 3px;
+          gap: 2px;
+        }
+
         .tl-icon-badge {
           font-size: 0.4375rem;
           font-weight: 700;
@@ -411,10 +580,20 @@ export function TimelineView({
           font-variant-numeric: tabular-nums;
         }
 
+        .tl-day-cell.week-cell .tl-icon-badge {
+          font-size: 0.5625rem;
+          font-weight: 600;
+          letter-spacing: -0.02em;
+        }
+
         .tl-icon-check {
           font-size: 0.5rem;
           color: oklch(42% 0.12 155);
           font-weight: 700;
+        }
+
+        .tl-day-cell.week-cell .tl-icon-check {
+          font-size: 0.625rem;
         }
 
         .tl-overflow-chip {
@@ -428,7 +607,12 @@ export function TimelineView({
           color: var(--ink-faint);
         }
 
-        /* Note dot indicator */
+        .tl-day-cell.week-cell .tl-overflow-chip {
+          font-size: 0.625rem;
+          padding: 2px 6px;
+        }
+
+        /* Note dot indicator (month mode) */
         .tl-note-dot {
           width: 4px;
           height: 4px;
@@ -442,6 +626,36 @@ export function TimelineView({
 
         .tl-day-cell:hover .tl-note-dot {
           opacity: 0.9;
+        }
+
+        /* Note preview (week mode) */
+        .tl-note-preview {
+          font-size: 0.6875rem;
+          color: oklch(52% 0.022 58);
+          line-height: 1.5;
+          letter-spacing: 0.01em;
+          word-break: break-all;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          margin-top: auto;
+          padding-top: 2px;
+          opacity: 0.78;
+          transition: opacity 0.12s;
+          width: 100%;
+        }
+
+        .tl-day-cell:hover .tl-note-preview {
+          opacity: 1;
+        }
+
+        .tl-note-img-hint {
+          font-size: 0.6875rem;
+          color: var(--ink-faint);
+          margin-top: auto;
+          padding-top: 2px;
+          opacity: 0.72;
         }
 
         /* ── Legend / info strip ── */
@@ -472,9 +686,11 @@ export function TimelineView({
         /* ── Responsive ── */
         @media (max-width: 640px) {
           .tl-root { padding: 16px 10px 48px; }
-          .tl-month-label { font-size: 1.25rem; }
+          .tl-period-label { font-size: 1.25rem; }
           .tl-user-label-cell { min-width: 110px; padding: 5px 8px 5px 10px; }
           .tl-day-cell { min-width: 28px; min-height: 40px; }
+          .tl-day-cell.week-cell { min-width: 100px; min-height: 72px; }
+          .tl-period-toggle { margin-left: 0; }
         }
       `}</style>
 
@@ -483,45 +699,80 @@ export function TimelineView({
         <div className="tl-topbar">
           <button
             className="tl-nav-btn"
-            onClick={() => navTo(-1)}
-            title="上个月"
-            aria-label="上个月"
+            onClick={navPrev}
+            title={isWeek ? "上周" : "上个月"}
+            aria-label={isWeek ? "上周" : "上个月"}
           >
             ←
           </button>
-          <h1 className="tl-month-label">{monthLabel}</h1>
+          <h1 className="tl-period-label">{periodLabel}</h1>
           <button
             className="tl-nav-btn"
-            onClick={() => navTo(1)}
-            title="下个月"
-            aria-label="下个月"
+            onClick={navNext}
+            title={isWeek ? "下周" : "下个月"}
+            aria-label={isWeek ? "下周" : "下个月"}
           >
             →
           </button>
           <button className="tl-today-btn" onClick={navToday}>
             今天
           </button>
+
+          {/* Period toggle */}
+          <div className="tl-period-toggle" role="group" aria-label="视图切换">
+            <button
+              className={`tl-toggle-btn${period === "month" ? " active" : ""}`}
+              onClick={period === "month" ? undefined : switchToMonth}
+              aria-pressed={period === "month"}
+            >
+              月
+            </button>
+            <button
+              className={`tl-toggle-btn${period === "week" ? " active" : ""}`}
+              onClick={period === "week" ? undefined : switchToWeek}
+              aria-pressed={period === "week"}
+            >
+              周
+            </button>
+          </div>
         </div>
-        <div className="tl-subtitle">合并视图 — 点击任意格子查看当天详情</div>
+
+        <div className="tl-subtitle">
+          合并视图 — 点击任意格子查看当天详情
+        </div>
 
         {/* ── Main grid ── */}
         <div className="tl-grid-outer">
           <div
             className="tl-table"
+            data-period={period}
             style={{
-              gridTemplateColumns: `minmax(140px, auto) repeat(${numDays}, minmax(32px, 1fr))`,
+              gridTemplateColumns: isWeek
+                ? `minmax(140px, auto) repeat(7, minmax(130px, 1fr))`
+                : `minmax(140px, auto) repeat(${columns.length}, minmax(32px, 1fr))`,
             }}
           >
             {/* Header row */}
             <div className="tl-header-user-cell">成员</div>
-            {Array.from({ length: numDays }, (_, i) => i + 1).map((day) => {
-              const isToday = day === todayInMonth;
+            {columns.map((col, idx) => {
+              const isToday = col.key === todayKey;
+              if (isWeek) {
+                return (
+                  <div
+                    key={col.key}
+                    className={`tl-header-day-cell week-header${isToday ? " today-col" : ""}`}
+                  >
+                    <span className="wh-weekday">{WEEKDAY_LABELS_CN[idx]}</span>
+                    <span className="wh-date">{col.label}</span>
+                  </div>
+                );
+              }
               return (
                 <div
-                  key={day}
+                  key={col.key}
                   className={`tl-header-day-cell${isToday ? " today-col" : ""}`}
                 >
-                  {day}
+                  {col.label}
                 </div>
               );
             })}
@@ -552,26 +803,93 @@ export function TimelineView({
                   </div>
 
                   {/* Day cells */}
-                  {Array.from({ length: numDays }, (_, i) => i + 1).map((day) => {
-                    const dateKey = formatDay(year, month, day);
-                    const isToday = day === todayInMonth;
-                    const occs = getUserOccs(user.id, dateKey);
-                    const note = getUserNote(user.id, dateKey);
-                    const hasNote =
+                  {columns.map((col) => {
+                    const isToday = col.key === todayKey;
+                    const occs = getUserOccs(user.id, col.key);
+                    const note = getUserNote(user.id, col.key);
+                    const hasNoteContent =
                       !!note &&
                       ((note.content && note.content.length > 0) ||
                         note.images.length > 0);
 
+                    if (isWeek) {
+                      // Week mode: wider cell with note preview
+                      const displayOccs = occs.slice(0, 4);
+                      const overflow = occs.length - 4;
+                      const hasContent = !!note?.content && note.content.length > 0;
+                      const hasImages = !!note && note.images.length > 0;
+                      let notePreview: string | null = null;
+                      let imageHint: string | null = null;
+                      if (hasContent) {
+                        const text = note!.content;
+                        notePreview = text.length > 30 ? text.slice(0, 30) + "…" : text;
+                      } else if (hasImages) {
+                        imageHint = `📷×${note!.images.length}`;
+                      }
+
+                      return (
+                        <div
+                          key={col.key}
+                          className={`tl-day-cell week-cell${isToday ? " today-col" : ""}`}
+                          onClick={() => handleCellClick(user.id, col.key)}
+                          title={`${user.displayName} · ${col.key}${occs.length > 0 ? ` · ${occs.length} 个事件` : ""}${hasNoteContent ? " · 有心声" : ""}`}
+                          aria-label={`${user.displayName} ${col.key}`}
+                        >
+                          <div className="tl-icons-area">
+                            {displayOccs.map((occ) => {
+                              const isCheck = occ.type === "CHECK";
+                              return (
+                                <div
+                                  key={occ.taskId}
+                                  className="tl-icon-chip"
+                                  style={{
+                                    background: `${occ.color}1a`,
+                                    borderColor: `${occ.color}33`,
+                                  }}
+                                  title={occ.name}
+                                >
+                                  <span>{occ.icon}</span>
+                                  {isCheck ? (
+                                    <span className="tl-icon-check">✓</span>
+                                  ) : occ.totalCount >= 2 ? (
+                                    <span className="tl-icon-badge">
+                                      ·{occ.totalCount}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                            {overflow > 0 && (
+                              <div className="tl-overflow-chip">+{overflow}</div>
+                            )}
+                          </div>
+                          {notePreview !== null && (
+                            <div
+                              className="tl-note-preview"
+                              title={note?.content ?? undefined}
+                            >
+                              {notePreview}
+                            </div>
+                          )}
+                          {imageHint !== null && (
+                            <div className="tl-note-img-hint">{imageHint}</div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // Month mode: compact cell
                     const displayOccs = occs.slice(0, 3);
                     const overflow = occs.length - 3;
 
+                    const [, mo, d] = col.key.split("-").map(Number);
                     return (
                       <div
-                        key={day}
+                        key={col.key}
                         className={`tl-day-cell${isToday ? " today-col" : ""}`}
-                        onClick={() => handleCellClick(user.id, day)}
-                        title={`${user.displayName} · ${month} 月 ${day} 日${occs.length > 0 ? ` · ${occs.length} 个事件` : ""}${hasNote ? " · 有心声" : ""}`}
-                        aria-label={`${user.displayName} ${month} 月 ${day} 日`}
+                        onClick={() => handleCellClick(user.id, col.key)}
+                        title={`${user.displayName} · ${mo} 月 ${d} 日${occs.length > 0 ? ` · ${occs.length} 个事件` : ""}${hasNoteContent ? " · 有心声" : ""}`}
+                        aria-label={`${user.displayName} ${mo} 月 ${d} 日`}
                       >
                         <div className="tl-icons-area">
                           {displayOccs.map((occ) => {
@@ -600,7 +918,7 @@ export function TimelineView({
                             <div className="tl-overflow-chip">+{overflow}</div>
                           )}
                         </div>
-                        {hasNote && <span className="tl-note-dot" />}
+                        {hasNoteContent && <span className="tl-note-dot" />}
                       </div>
                     );
                   })}
@@ -612,13 +930,15 @@ export function TimelineView({
 
         {/* Legend */}
         <div className="tl-legend">
-          <div className="tl-legend-item">
-            <span
-              className="tl-legend-dot"
-              style={{ background: "oklch(58% 0.030 52)" }}
-            />
-            圆点 = 有心声记录
-          </div>
+          {!isWeek && (
+            <div className="tl-legend-item">
+              <span
+                className="tl-legend-dot"
+                style={{ background: "oklch(58% 0.030 52)" }}
+              />
+              圆点 = 有心声记录
+            </div>
+          )}
           <div className="tl-legend-item">
             点击格子查看当日详情，可在自己的行编辑
           </div>

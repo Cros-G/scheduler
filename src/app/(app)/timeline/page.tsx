@@ -1,41 +1,86 @@
 import { redirect } from "next/navigation";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { todayKey, monthRange } from "@/lib/dates";
+import { todayKey, monthRange, weekRange, formatDateKey } from "@/lib/dates";
 import { scopeOccurrencesWhere } from "@/lib/visibility";
 import { TimelineView } from "../timeline-view";
 
 export default async function TimelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ y?: string; m?: string }>;
+  searchParams: Promise<{ y?: string; m?: string; period?: string; d?: string }>;
 }) {
   const viewer = await requireAuth();
-  const { y, m } = await searchParams;
+  const { y, m, period: rawPeriod, d: rawD } = await searchParams;
 
-  // Parse year/month from search params
   const now = new Date();
-  const defaultYear = now.getFullYear();
-  const defaultMonth = now.getMonth() + 1;
+  const defaultTodayKey = formatDateKey(now);
 
-  let year = defaultYear;
-  let month = defaultMonth;
-
-  if (y !== undefined || m !== undefined) {
-    const parsedYear = parseInt(y ?? "", 10);
-    const parsedMonth = parseInt(m ?? "", 10);
-    const yearValid = !isNaN(parsedYear) && parsedYear >= 2000 && parsedYear <= 2100;
-    const monthValid = !isNaN(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12;
-    if (!yearValid || !monthValid) {
-      redirect("/timeline");
-    }
-    year = parsedYear;
-    month = parsedMonth;
+  // ── Determine period ──────────────────────────────────────────────────────
+  // Backward compat: if y/m present and no period, treat as month mode
+  let period: "month" | "week" = "month";
+  if (rawPeriod === "week") {
+    period = "week";
+  } else if (rawPeriod === "month" || rawPeriod === undefined) {
+    period = "month";
+  } else {
+    // Unknown period value → redirect to clean URL
+    redirect("/timeline");
   }
 
-  const { start, end } = monthRange(year, month);
+  // ── Determine anchor date ─────────────────────────────────────────────────
+  let anchorKey: string; // YYYY-MM-DD
 
-  // Fetch all users
+  if (period === "week") {
+    // Week mode: use ?d= param or today
+    if (rawD && /^\d{4}-\d{2}-\d{2}$/.test(rawD)) {
+      anchorKey = rawD;
+    } else if (rawD) {
+      redirect("/timeline?period=week");
+    } else {
+      anchorKey = defaultTodayKey;
+    }
+  } else {
+    // Month mode: backward-compat ?y=&m= OR ?d= (first day of that month)
+    if (y !== undefined || m !== undefined) {
+      // Legacy y/m params
+      const parsedYear = parseInt(y ?? "", 10);
+      const parsedMonth = parseInt(m ?? "", 10);
+      const yearValid = !isNaN(parsedYear) && parsedYear >= 2000 && parsedYear <= 2100;
+      const monthValid = !isNaN(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12;
+      if (!yearValid || !monthValid) {
+        redirect("/timeline");
+      }
+      const mm = String(parsedMonth).padStart(2, "0");
+      anchorKey = `${parsedYear}-${mm}-01`;
+    } else if (rawD && /^\d{4}-\d{2}-\d{2}$/.test(rawD)) {
+      // Normalize: use first day of that month
+      const [dy, dm] = rawD.split("-").map(Number);
+      const mm = String(dm).padStart(2, "0");
+      anchorKey = `${dy}-${mm}-01`;
+    } else if (rawD) {
+      redirect("/timeline");
+    } else {
+      anchorKey = defaultTodayKey;
+    }
+  }
+
+  // ── Compute range ─────────────────────────────────────────────────────────
+  let rangeStart: string;
+  let rangeEnd: string;
+
+  if (period === "week") {
+    const r = weekRange(anchorKey);
+    rangeStart = r.start;
+    rangeEnd = r.end;
+  } else {
+    const [ay, am] = anchorKey.split("-").map(Number);
+    const r = monthRange(ay, am);
+    rangeStart = r.start;
+    rangeEnd = r.end;
+  }
+
+  // ── Fetch data ────────────────────────────────────────────────────────────
   const allUsers = await prisma.user.findMany({
     select: { id: true, username: true, displayName: true, color: true },
     orderBy: { displayName: "asc" },
@@ -43,23 +88,21 @@ export default async function TimelinePage({
 
   const allUserIds = allUsers.map((u) => u.id);
 
-  // Fetch tasks visible to the viewer across all users
   const tasks = await prisma.task.findMany({
     where: {
       OR: [
-        { userId: viewer.id }, // own (private + public)
-        { userId: { not: viewer.id }, isPrivate: false }, // others' public only
+        { userId: viewer.id },
+        { userId: { not: viewer.id }, isPrivate: false },
       ],
       archivedAt: null,
     },
     orderBy: { createdAt: "asc" },
   });
 
-  // Fetch occurrences using scopeOccurrencesWhere — respects privacy
   const occurrences = await prisma.occurrence.findMany({
     where: {
       ...scopeOccurrencesWhere(viewer.id, allUserIds),
-      date: { gte: start, lte: end },
+      date: { gte: rangeStart, lte: rangeEnd },
     },
     include: {
       task: {
@@ -68,7 +111,6 @@ export default async function TimelinePage({
     },
   });
 
-  // Aggregate by (userId, date)
   type AggEntry = {
     taskId: number;
     name: string;
@@ -78,7 +120,7 @@ export default async function TimelinePage({
     totalCount: number;
     occurrenceIds: number[];
   };
-  // occurrencesByUserDate: userId -> dateKey -> AggEntry[]
+
   const occurrencesByUserDate: Record<number, Record<string, AggEntry[]>> = {};
 
   for (const occ of occurrences) {
@@ -103,19 +145,33 @@ export default async function TimelinePage({
     }
   }
 
-  // Fetch notes (all users, no privacy filter for MVP)
   const notes = await prisma.dailyNote.findMany({
     where: {
       userId: { in: allUserIds },
-      date: { gte: start, lte: end },
+      date: { gte: rangeStart, lte: rangeEnd },
     },
     include: {
       images: { orderBy: { sortOrder: "asc" } },
     },
   });
 
-  // notesByUserDate: userId -> dateKey -> NoteData
-  const notesByUserDate: Record<number, Record<string, { id: number; content: string; images: { id: number; sortOrder: number; originalName: string; mimeType: string; sizeBytes: number }[] }>> = {};
+  const notesByUserDate: Record<
+    number,
+    Record<
+      string,
+      {
+        id: number;
+        content: string;
+        images: {
+          id: number;
+          sortOrder: number;
+          originalName: string;
+          mimeType: string;
+          sizeBytes: number;
+        }[];
+      }
+    >
+  > = {};
   for (const note of notes) {
     const uid = note.userId;
     if (!notesByUserDate[uid]) notesByUserDate[uid] = {};
@@ -126,8 +182,10 @@ export default async function TimelinePage({
 
   return (
     <TimelineView
-      year={year}
-      month={month}
+      period={period}
+      anchorKey={anchorKey}
+      rangeStart={rangeStart}
+      rangeEnd={rangeEnd}
       viewerId={viewer.id}
       allUsers={allUsers}
       tasks={tasks}
