@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Cleanup script for E2E tests: removes all tasks, occurrences, notes and images for known E2E users
+// Cleanup script for E2E tests: removes all tasks, occurrences, notes, images and emoji data for known E2E users
 const { PrismaClient } = require("@prisma/client");
 const p = new PrismaClient();
 const NAMES = ["e2e_alice", "e2e_bob", "e2e_admin"];
 (async () => {
-  // Cascade-safe order: noteImage → dailyNote → occurrence → task
+  // Cascade-safe order: emoji → noteImage → dailyNote → occurrence → task
   for (const username of NAMES) {
+    await p.customEmoji.deleteMany({ where: { category: { user: { username } } } });
+    await p.emojiCategory.deleteMany({ where: { user: { username } } });
     await p.noteImage.deleteMany({ where: { note: { user: { username } } } });
     await p.dailyNote.deleteMany({ where: { user: { username } } });
     await p.occurrence.deleteMany({ where: { user: { username } } });
