@@ -1,6 +1,6 @@
 # 日历记账
 
-A self-hosted calendar-based task tracker for small circles (couple, family, close friends). **Feature-complete (Plan 6).** Includes admin console (`/admin`), week/timeline/profile views, daily notes with image upload, and production Docker deployment with automated SQLite backup.
+A self-hosted calendar-based task tracker for small circles (couple, family, close friends). **Feature-complete (Plan 7).** Includes admin console (`/admin`), week/timeline/profile views, daily notes with image upload, production Docker deployment with automated SQLite backup, custom emoji categories, and a `/stats` dashboard with year/month/week period toggle, task bars, streaks, and heatmap.
 
 ## Stack
 
@@ -22,8 +22,8 @@ pnpm dev                         # http://localhost:3000
 ## Testing
 
 ```bash
-pnpm test                        # vitest unit + integration (167 tests, 15 files)
-pnpm test:e2e                    # Playwright E2E (58 tests: auth + task CRUD + occurrence/month-view + daily-notes + settings + week-view + multiuser + admin; auto-spawns dev server, runs sequentially)
+pnpm test                        # vitest unit + integration (239 tests, 18 files)
+pnpm test:e2e                    # Playwright E2E (~74 tests: auth + task CRUD + occurrence/month-view + daily-notes + settings + week-view + multiuser + admin + plan7 timeline/emoji/stats; auto-spawns dev server, runs sequentially)
 pnpm build                       # production build (type-check + bundle)
 ```
 
@@ -126,7 +126,10 @@ src/
       occurrences/     # server actions: addOccurrence, removeOccurrence, setCheck
       notes/           # server actions: upsertNote, deleteNoteImage, reorderNoteImages
       admin/           # /admin — admin-only user management: create/edit/reset-password/delete; three self-protections
-      nav-bar.tsx      # top nav: links to all routes, active state, admin link (admins only), view-switcher dropdown
+      stats/           # /stats — year/month/week period toggle; task bars, streaks, heatmap SVG
+      settings/
+        emojis/        # /settings/emojis — create/delete custom emoji categories; add/remove emojis
+      nav-bar.tsx      # top nav: links to all routes, active state, admin link (admins only), 统计 link (auth-only), view-switcher dropdown
       note-editor.tsx  # textarea + image grid; readonly prop hides save/upload/delete
     api/
       login/           # POST /api/login
@@ -139,6 +142,9 @@ src/
     auth.ts            # getCurrentUser / requireAuth / requireAdmin / requireAuthApi
     task-validation.ts # validateTaskInput + 12-color palette + parseTaskFormData
     note-validation.ts # validateNoteContent / validateImageMeta; NOTE_IMAGES_MAX=6, NOTE_IMAGE_BYTES_MAX=5MB
+    emoji-constants.ts # built-in emoji categories (8 categories) + loadAllCategories (merges custom)
+    emoji-validation.ts # validateCategoryName / validateEmojiChar server-side checks
+    stats.ts           # computeTaskStats / computeStreaks / computeHeatmap — period-aware helpers
     storage.ts         # buildUploadPath / saveUpload / readUpload / deleteNoteImageFromDisk / deleteUserUploadsDir
     user-validation.ts # validateUsername / validateDisplayName / validatePassword
     dates.ts           # formatDateKey (sv-SE), monthGrid, todayKey, weekRange, monthRange
@@ -166,6 +172,7 @@ See `docs/superpowers/plans/` for execution plans:
 - [x] Plan 4: Daily notes / 心声 — per-day text editor (10000 char cap) + image upload (6 images/day, 5 MB each, jpg/png/webp/gif); auth-gated image serve; transactional DB + disk rollback on failure
 - [x] Plan 5: Views + multi-user — `/week` (7-column week calendar), `/timeline` (all users × days merged), `/u/<username>` (readonly profile view with 404 for missing users, self-redirect to `/`), `/settings` (displayName + color), privacy filter (`isPrivate` tasks hidden from non-owners), progress badges on COUNTED tasks, view-switcher dropdown in nav
 - [x] Plan 5.5: Admin user management — `/admin` console (admin-only, redirects non-admins to `/`); create/edit/reset-password/delete users via UI; three self-protections (no delete-self, no demote-self, no remove-last-admin); reset password invalidates all sessions; delete cascades data and cleans uploads dir; admin nav link visible to admins only; CLI remains for first-deploy + emergency fallback
-- [x] Plan 6: Docker deployment + backup — multi-stage Dockerfile (Next.js standalone), docker-compose.yml, entrypoint auto-runs migrations, `scripts/backup.sh` (SQLite hot-backup → tar.gz, 14-day retention). **Project feature-complete.**
+- [x] Plan 6: Docker deployment + backup — multi-stage Dockerfile (Next.js standalone), docker-compose.yml, entrypoint auto-runs migrations, `scripts/backup.sh` (SQLite hot-backup → tar.gz, 14-day retention).
+- [x] Plan 7: Timeline period toggle + custom emoji + stats — `/timeline` supports `?period=month|week`; `/settings/emojis` for managing custom emoji categories and emojis; `/stats` dashboard with year/month/week period toggle, task completion bars, current/best streaks, and SVG heatmap; "统计" nav link visible after login. **Project feature-complete.**
 
 For full product specification, see `specifications.md`.
