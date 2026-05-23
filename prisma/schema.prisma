@@ -20,6 +20,7 @@ model User {
   tasks        Task[]
   occurrences  Occurrence[]
   notes        DailyNote[]
+  emojiCategories EmojiCategory[]
 }
 
 model Session {
@@ -101,4 +102,28 @@ model NoteImage {
   createdAt    DateTime  @default(now())
 
   @@index([noteId])
+}
+
+model EmojiCategory {
+  id        Int           @id @default(autoincrement())
+  userId    Int
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+  emojis    CustomEmoji[]
+
+  @@index([userId])
+}
+
+model CustomEmoji {
+  id         Int           @id @default(autoincrement())
+  categoryId Int
+  category   EmojiCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  emoji      String
+  sortOrder  Int           @default(0)
+  createdAt  DateTime      @default(now())
+
+  @@unique([categoryId, emoji])
+  @@index([categoryId])
 }

@@ -25,6 +25,8 @@ export function getTestPrisma(): PrismaClient {
 
 export async function resetTestDb() {
   const p = getTestPrisma();
+  await p.customEmoji.deleteMany();
+  await p.emojiCategory.deleteMany();
   await p.noteImage.deleteMany();
   await p.dailyNote.deleteMany();
   await p.occurrence.deleteMany();
