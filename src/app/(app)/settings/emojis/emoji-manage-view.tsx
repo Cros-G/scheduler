@@ -351,7 +351,13 @@ export function EmojiManageView({
           padding: 8px 10px;
           border-top: 1px solid oklch(88% 0.014 58);
           display: flex;
+          flex-direction: column;
           gap: 6px;
+        }
+        .emm-new-cat-form-actions {
+          display: flex;
+          gap: 6px;
+          justify-content: flex-end;
         }
 
         /* Right pane */
@@ -811,24 +817,26 @@ export function EmojiManageView({
                     }
                   }}
                 />
-                <button
-                  type="button"
-                  className="emm-submit-btn"
-                  disabled={!newCatName.trim() || isPending}
-                  onClick={handleCreateCategory}
-                >
-                  建
-                </button>
-                <button
-                  type="button"
-                  className="emm-cancel-btn"
-                  onClick={() => {
-                    setShowNewCatInput(false);
-                    setNewCatName("");
-                  }}
-                >
-                  ×
-                </button>
+                <div className="emm-new-cat-form-actions">
+                  <button
+                    type="button"
+                    className="emm-cancel-btn"
+                    onClick={() => {
+                      setShowNewCatInput(false);
+                      setNewCatName("");
+                    }}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    className="emm-submit-btn"
+                    disabled={!newCatName.trim() || isPending}
+                    onClick={handleCreateCategory}
+                  >
+                    创建
+                  </button>
+                </div>
               </div>
             ) : (
               <button
