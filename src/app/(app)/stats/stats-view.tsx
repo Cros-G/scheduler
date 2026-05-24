@@ -280,13 +280,30 @@ function StreakList({ streaks }: { streaks: StreakRow[] }) {
 
 // ── Heatmap ───────────────────────────────────────────────────────────────────
 
+type HeatmapDetailMap = Map<string, Array<{ icon: string; name: string; count: number }>>;
+
+function buildHeatmapTooltip(
+  date: string,
+  totalCount: number,
+  details: HeatmapDetailMap | null
+): string {
+  const [, mm, dd] = date.split("-");
+  const head = `${parseInt(mm)}月${parseInt(dd)}日 · 共 ${totalCount} 次`;
+  if (!details || totalCount === 0) return head;
+  const rows = details.get(date);
+  if (!rows || rows.length === 0) return head;
+  return [head, ...rows.map((r) => `${r.icon} ${r.name} ×${r.count}`)].join("\n");
+}
+
 function Heatmap({
   heatmap,
   period,
+  details,
 }: {
   heatmap: HeatmapDay[];
   period: "year" | "month" | "week";
   rangeStart?: string;
+  details?: HeatmapDetailMap | null;
 }) {
   if (period === "week") {
     // For week, show a simple 7-cell row
@@ -300,7 +317,7 @@ function Heatmap({
               <div
                 className="sv-heatmap-cell-square"
                 style={{ background: BUCKET_COLORS[bucket] }}
-                title={`${parseInt(mm)}月${parseInt(dd)}日: ${day.totalCount} 次`}
+                title={buildHeatmapTooltip(day.date, day.totalCount, details ?? null)}
               />
               <div className="sv-heatmap-week-label">
                 {parseInt(mm)}/{parseInt(dd)}
@@ -362,7 +379,6 @@ function Heatmap({
               );
             }
             const bucket = colorBucket(day.totalCount);
-            const [, mm, dd] = day.date.split("-");
             return (
               <rect
                 key={day.date}
@@ -373,7 +389,7 @@ function Heatmap({
                 fill={BUCKET_COLORS[bucket]}
                 rx="2"
               >
-                <title>{`${parseInt(mm)}月${parseInt(dd)}日: ${day.totalCount} 次`}</title>
+                <title>{buildHeatmapTooltip(day.date, day.totalCount, details ?? null)}</title>
               </rect>
             );
           })}
@@ -456,7 +472,6 @@ function Heatmap({
             );
           }
           const bucket = colorBucket(day.totalCount);
-          const [, mm, dd] = day.date.split("-");
           return (
             <rect
               key={day.date}
@@ -467,7 +482,7 @@ function Heatmap({
               fill={BUCKET_COLORS[bucket]}
               rx="1.5"
             >
-              <title>{`${parseInt(mm)}月${parseInt(dd)}日: ${day.totalCount} 次`}</title>
+              <title>{buildHeatmapTooltip(day.date, day.totalCount, details ?? null)}</title>
             </rect>
           );
         })}
@@ -530,6 +545,34 @@ export function StatsView({
     const filtered = occurrences.filter((o) => o.taskId === selectedTaskId);
     return computeHeatmap(filtered, rangeStart, rangeEnd);
   }, [selectedTaskId, occurrences, heatmap, rangeStart, rangeEnd]);
+
+  // Per-day per-task breakdown for hover tooltip (only meaningful when "全部事件" is selected)
+  const heatmapDetails = useMemo(() => {
+    if (selectedTaskId !== null) return null; // filtered mode: tooltip uses simple count
+    const taskById = new Map(tasks.map((t) => [t.id, t]));
+    const byDate = new Map<string, Map<number, number>>();
+    for (const o of occurrences) {
+      if (o.date < rangeStart || o.date > rangeEnd) continue;
+      let inner = byDate.get(o.date);
+      if (!inner) {
+        inner = new Map();
+        byDate.set(o.date, inner);
+      }
+      inner.set(o.taskId, (inner.get(o.taskId) ?? 0) + o.count);
+    }
+    const result = new Map<string, Array<{ icon: string; name: string; count: number }>>();
+    for (const [date, inner] of byDate) {
+      const rows = Array.from(inner.entries())
+        .map(([taskId, count]) => {
+          const t = taskById.get(taskId);
+          return t ? { icon: t.icon, name: t.name, count } : null;
+        })
+        .filter((r): r is { icon: string; name: string; count: number } => r !== null)
+        .sort((a, b) => b.count - a.count);
+      result.set(date, rows);
+    }
+    return result;
+  }, [selectedTaskId, occurrences, tasks, rangeStart, rangeEnd]);
 
   function navigate(newPeriod: "year" | "month" | "week", anchor: string) {
     router.push(buildUrl(newPeriod, anchor));
@@ -1173,7 +1216,7 @@ export function StatsView({
               </select>
             </div>
           )}
-          <Heatmap heatmap={filteredHeatmap} period={period} rangeStart={rangeStart} />
+          <Heatmap heatmap={filteredHeatmap} period={period} rangeStart={rangeStart} details={heatmapDetails} />
           <HeatmapLegend />
         </div>
       </div>
