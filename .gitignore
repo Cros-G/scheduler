@@ -17,3 +17,4 @@ test-results/
 .DS_Store
 prod-data/
 backups/
+.env.production.bak.*

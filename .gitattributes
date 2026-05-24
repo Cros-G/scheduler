@@ -1,0 +1,44 @@
+# Normalize all text files to LF in the repository
+# (Working tree on Windows can still be CRLF if user has core.autocrlf=true)
+* text=auto eol=lf
+
+# Always LF for things that must execute on Linux servers
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Source code — always LF
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.sql text eol=lf
+*.prisma text eol=lf
+*.toml text eol=lf
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Binary files — never modify
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.db binary
+*.sqlite binary
+*.tar binary
+*.gz binary
+*.tgz binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

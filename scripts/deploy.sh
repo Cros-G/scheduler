@@ -63,8 +63,19 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   fail "Stash or commit local changes first:  git stash"
 fi
 
-# Host port for health-check (default 3000)
-HOST_PORT=$(grep -E '^HOST_PORT=' .env.production 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '"' || true)
+# Host port for health-check. Compose interpolates ${HOST_PORT} from `.env` (NOT env_file).
+# If user put HOST_PORT only in .env.production it won't affect port mapping — but we still
+# look there as a fallback for older setups.
+HOST_PORT=""
+for envfile in .env .env.production; do
+  if [ -f "$envfile" ]; then
+    val=$(grep -E '^HOST_PORT=' "$envfile" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '"' || true)
+    if [ -n "$val" ]; then
+      HOST_PORT="$val"
+      break
+    fi
+  fi
+done
 HOST_PORT=${HOST_PORT:-3000}
 
 # ── Record current state ──────────────────────────────────────────
