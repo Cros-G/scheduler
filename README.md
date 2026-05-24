@@ -99,11 +99,15 @@ docker compose up -d
 
 ### 升级
 
+一键脚本（自动备份 + 拉代码 + 提醒迁移 + build + 健康检查）：
+
 ```bash
-git pull
-docker compose up -d --build
-# Migration 在 entrypoint 自动跑
+bash scripts/deploy.sh
 ```
+
+迁移在 entrypoint 自动跑（`prisma migrate deploy`，幂等、只前向）；
+`prod-data/` 是 host volume，重 build 不动数据。
+详见 [docs/HUAWEI-CLOUD-DEPLOY.md §11](docs/HUAWEI-CLOUD-DEPLOY.md)。
 
 ## Project structure
 

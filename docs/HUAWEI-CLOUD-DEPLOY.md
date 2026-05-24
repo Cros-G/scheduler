@@ -572,19 +572,54 @@ docker image prune -f
 
 ## 11. 升级流程（之后我改了代码）
 
+**推荐**：一键脚本，自动做完"备份 → 拉代码 → 提醒迁移 → build → 健康检查"全套：
+
 ```bash
 cd /opt/scheduler
-# 备份先（习惯）
+bash scripts/deploy.sh
+```
+
+脚本会：
+1. 检查环境（docker、env、git 干净）
+2. 自动 `bash scripts/backup.sh` 备份当前 DB + uploads
+3. `git fetch` + 列出新 commits
+4. 如果有新 Prisma migrations，**显式列出**让你确认（5 秒可 Ctrl-C 中止）
+5. `git pull --ff-only`
+6. `docker compose up -d --build`
+7. 轮询 `localhost:3000/` 健康检查（最多 60s）
+8. 失败时打印**回滚命令**（不自动回滚，太危险）
+
+正常输出（绿✓ + 黄!）你扫一眼就知道情况。
+
+---
+
+**手工模式**（如果你想精确控制每一步）：
+
+```bash
+cd /opt/scheduler
+# 1. 先备份
 bash scripts/backup.sh
-# 拉新代码
-git pull
-# 重 build + 重启
+
+# 2. 拉新代码
+git fetch origin
+git log HEAD..origin/master --oneline                # 看新增什么
+git diff HEAD..origin/master -- prisma/migrations/   # 检查新 migration
+git pull --ff-only
+
+# 3. 重 build + 重启
 docker compose up -d --build
-# 看日志确认
+
+# 4. 看日志确认 migrate + server 起来
 docker compose logs -f app
 ```
 
-Migration 在 entrypoint 自动跑，不用手动 `prisma migrate`。
+Migration 在 entrypoint 自动跑 `prisma migrate deploy`（幂等、只前向），不用手动 `prisma migrate`。
+
+**数据安全保证**：
+- `prod-data/` 是 host 上的 volume，**重 build 不动它**。SQLite 文件 + uploads 都在那里
+- Session 在 DB 里，升级后用户保持登录
+- 至今所有 migration 都是"加表/加字段"（无 DROP/类型变更），无破坏性
+- **未来某次升级如果引入破坏性 migration**，deploy.sh 会在 pull 前列出文件名让你看；你看到 `DROP` 之类的关键字就 Ctrl-C，先 review 再继续
 
 ---
 
