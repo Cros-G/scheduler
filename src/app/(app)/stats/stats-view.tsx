@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import type { TaskStatsRow, StreakRow, HeatmapDay } from "@/lib/stats";
 import { colorBucket, computeHeatmap } from "@/lib/stats";
 import { CHINESE_MONTHS } from "@/lib/dates";
@@ -295,6 +295,42 @@ function buildHeatmapTooltip(
   return [head, ...rows.map((r) => `${r.icon} ${r.name} ×${r.count}`)].join("\n");
 }
 
+interface HoveredCell {
+  date: string;
+  totalCount: number;
+  rows: Array<{ icon: string; name: string; count: number }>;
+  x: number; // center x within container
+  y: number; // top edge y within container
+}
+
+function HeatmapTooltip({ hovered }: { hovered: HoveredCell }) {
+  const [, mm, dd] = hovered.date.split("-");
+  const head = `${parseInt(mm)} 月 ${parseInt(dd)} 日 · 共 ${hovered.totalCount} 次`;
+  return (
+    <div
+      className="sv-hm-tip"
+      role="tooltip"
+      style={{ left: hovered.x, top: hovered.y }}
+    >
+      <div className="sv-hm-tip-head">{head}</div>
+      {hovered.rows.length > 0 && (
+        <ul className="sv-hm-tip-list">
+          {hovered.rows.map((r, i) => (
+            <li key={`${r.name}-${i}`} className="sv-hm-tip-row">
+              <span className="sv-hm-tip-icon">{r.icon}</span>
+              <span className="sv-hm-tip-name">{r.name}</span>
+              <span className="sv-hm-tip-count">×{r.count}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {hovered.totalCount === 0 && (
+        <div className="sv-hm-tip-empty">这天没有记录</div>
+      )}
+    </div>
+  );
+}
+
 function Heatmap({
   heatmap,
   period,
@@ -305,19 +341,44 @@ function Heatmap({
   rangeStart?: string;
   details?: HeatmapDetailMap | null;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState<HoveredCell | null>(null);
+
+  function showFor(e: React.MouseEvent<Element>, day: HeatmapDay) {
+    const target = (e.currentTarget as Element).getBoundingClientRect();
+    const container = containerRef.current?.getBoundingClientRect();
+    if (!container) return;
+    const rows = details?.get(day.date) ?? [];
+    setHovered({
+      date: day.date,
+      totalCount: day.totalCount,
+      rows,
+      x: target.left + target.width / 2 - container.left,
+      y: target.top - container.top,
+    });
+  }
+
+  function hide() {
+    setHovered(null);
+  }
+
+  let inner: React.ReactNode;
+
   if (period === "week") {
-    // For week, show a simple 7-cell row
-    return (
+    inner = (
       <div className="sv-heatmap-week">
         {heatmap.map((day) => {
           const bucket = colorBucket(day.totalCount);
           const [, mm, dd] = day.date.split("-");
+          const ariaLabel = buildHeatmapTooltip(day.date, day.totalCount, details ?? null);
           return (
             <div key={day.date} className="sv-heatmap-week-cell">
               <div
                 className="sv-heatmap-cell-square"
                 style={{ background: BUCKET_COLORS[bucket] }}
-                title={buildHeatmapTooltip(day.date, day.totalCount, details ?? null)}
+                aria-label={ariaLabel}
+                onMouseEnter={(e) => showFor(e, day)}
+                onMouseLeave={hide}
               />
               <div className="sv-heatmap-week-label">
                 {parseInt(mm)}/{parseInt(dd)}
@@ -327,12 +388,8 @@ function Heatmap({
         })}
       </div>
     );
-  }
-
-  if (period === "month") {
-    // Month grid: calendar layout (Mon-Sun)
+  } else if (period === "month") {
     const firstDate = parseKey(heatmap[0]?.date ?? "2026-01-01");
-    // Mon=0..Sun=6
     const firstWeekdayMon = (firstDate.getDay() + 6) % 7;
     const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
@@ -340,14 +397,13 @@ function Heatmap({
       ...Array(firstWeekdayMon).fill(null),
       ...heatmap,
     ];
-    // Pad to full weeks
     while (cells.length % 7 !== 0) cells.push(null);
 
     const cols = cells.length / 7;
     const svgW = cols * 14 + (cols - 1) * 2;
     const svgH = 7 * 14 + 6 * 2;
 
-    return (
+    inner = (
       <div className="sv-heatmap-month">
         <div className="sv-heatmap-weekdays">
           {WEEKDAY_LABELS.map((l) => (
@@ -379,6 +435,7 @@ function Heatmap({
               );
             }
             const bucket = colorBucket(day.totalCount);
+            const ariaLabel = buildHeatmapTooltip(day.date, day.totalCount, details ?? null);
             return (
               <rect
                 key={day.date}
@@ -388,9 +445,100 @@ function Heatmap({
                 height="14"
                 fill={BUCKET_COLORS[bucket]}
                 rx="2"
-              >
-                <title>{buildHeatmapTooltip(day.date, day.totalCount, details ?? null)}</title>
-              </rect>
+                aria-label={ariaLabel}
+                onMouseEnter={(e) => showFor(e, day)}
+                onMouseLeave={hide}
+                style={{ cursor: "default" }}
+              />
+            );
+          })}
+        </svg>
+      </div>
+    );
+  } else {
+    // Year: GitHub-style 53 columns × 7 rows
+    const firstDate = parseKey(heatmap[0]?.date ?? "2026-01-01");
+    const firstWeekdayMon = (firstDate.getDay() + 6) % 7;
+
+    const grid: (HeatmapDay | null)[] = [
+      ...Array(firstWeekdayMon).fill(null),
+      ...heatmap,
+    ];
+    while (grid.length % 7 !== 0) grid.push(null);
+
+    const numCols = grid.length / 7;
+    const CELL = 11;
+    const GAP = 2;
+    const svgW = numCols * (CELL + GAP) - GAP;
+    const svgH = 7 * (CELL + GAP) - GAP;
+
+    const monthCols: { col: number; label: string }[] = [];
+    for (let i = firstWeekdayMon; i < grid.length; i++) {
+      const day = grid[i];
+      if (!day) continue;
+      const [, mm, dd] = day.date.split("-");
+      if (parseInt(dd) <= 7) {
+        const col = Math.floor(i / 7);
+        const last = monthCols[monthCols.length - 1];
+        if (!last || last.col < col - 1) {
+          monthCols.push({ col, label: `${parseInt(mm)}月` });
+        }
+      }
+    }
+
+    inner = (
+      <div className="sv-heatmap-year">
+        <svg
+          viewBox={`0 0 ${svgW} ${svgH + 16}`}
+          width="100%"
+          style={{ display: "block" }}
+        >
+          {monthCols.map(({ col, label }) => (
+            <text
+              key={label}
+              x={col * (CELL + GAP)}
+              y="10"
+              fontSize="7"
+              fill="oklch(58% 0.018 58)"
+              fontFamily="system-ui, sans-serif"
+            >
+              {label}
+            </text>
+          ))}
+          {grid.map((day, i) => {
+            const col = Math.floor(i / 7);
+            const row = i % 7;
+            const x = col * (CELL + GAP);
+            const y = 16 + row * (CELL + GAP);
+            if (!day) {
+              return (
+                <rect
+                  key={`empty-${i}`}
+                  x={x}
+                  y={y}
+                  width={CELL}
+                  height={CELL}
+                  fill="transparent"
+                  rx="1.5"
+                />
+              );
+            }
+            const bucket = colorBucket(day.totalCount);
+            const ariaLabel = buildHeatmapTooltip(day.date, day.totalCount, details ?? null);
+            return (
+              <rect
+                key={day.date}
+                x={x}
+                y={y}
+                width={CELL}
+                height={CELL}
+                fill={BUCKET_COLORS[bucket]}
+                rx="1.5"
+                aria-label={ariaLabel}
+                onMouseEnter={(e) => showFor(e, day)}
+                onMouseLeave={hide}
+                style={{ cursor: "default" }}
+              />
             );
           })}
         </svg>
@@ -398,95 +546,15 @@ function Heatmap({
     );
   }
 
-  // Year: GitHub-style 53 columns × 7 rows
-  // Each column = one week (Mon-Sun). First column starts at Jan 1's weekday.
-  const firstDate = parseKey(heatmap[0]?.date ?? "2026-01-01");
-  const firstWeekdayMon = (firstDate.getDay() + 6) % 7; // 0=Mon..6=Sun
-
-  // Build a grid: prefixed with null cells for alignment
-  const grid: (HeatmapDay | null)[] = [
-    ...Array(firstWeekdayMon).fill(null),
-    ...heatmap,
-  ];
-  // Pad to multiple of 7
-  while (grid.length % 7 !== 0) grid.push(null);
-
-  const numCols = grid.length / 7;
-  const CELL = 11;
-  const GAP = 2;
-  const svgW = numCols * (CELL + GAP) - GAP;
-  const svgH = 7 * (CELL + GAP) - GAP;
-
-  // Month labels: find col of each month's first appearance
-  const monthCols: { col: number; label: string }[] = [];
-  for (let i = firstWeekdayMon; i < grid.length; i++) {
-    const day = grid[i];
-    if (!day) continue;
-    const [, mm, dd] = day.date.split("-");
-    if (parseInt(dd) <= 7) {
-      const col = Math.floor(i / 7);
-      const last = monthCols[monthCols.length - 1];
-      if (!last || last.col < col - 1) {
-        monthCols.push({ col, label: `${parseInt(mm)}月` });
-      }
-    }
-  }
-
   return (
-    <div className="sv-heatmap-year">
-      <svg
-        viewBox={`0 0 ${svgW} ${svgH + 16}`}
-        width="100%"
-        style={{ display: "block" }}
-      >
-        {/* Month labels */}
-        {monthCols.map(({ col, label }) => (
-          <text
-            key={label}
-            x={col * (CELL + GAP)}
-            y="10"
-            fontSize="7"
-            fill="oklch(58% 0.018 58)"
-            fontFamily="system-ui, sans-serif"
-          >
-            {label}
-          </text>
-        ))}
-        {/* Cells */}
-        {grid.map((day, i) => {
-          const col = Math.floor(i / 7);
-          const row = i % 7;
-          const x = col * (CELL + GAP);
-          const y = 16 + row * (CELL + GAP);
-          if (!day) {
-            return (
-              <rect
-                key={`empty-${i}`}
-                x={x}
-                y={y}
-                width={CELL}
-                height={CELL}
-                fill="transparent"
-                rx="1.5"
-              />
-            );
-          }
-          const bucket = colorBucket(day.totalCount);
-          return (
-            <rect
-              key={day.date}
-              x={x}
-              y={y}
-              width={CELL}
-              height={CELL}
-              fill={BUCKET_COLORS[bucket]}
-              rx="1.5"
-            >
-              <title>{buildHeatmapTooltip(day.date, day.totalCount, details ?? null)}</title>
-            </rect>
-          );
-        })}
-      </svg>
+    <div
+      ref={containerRef}
+      className="sv-heatmap-shell"
+      style={{ position: "relative" }}
+      onMouseLeave={hide}
+    >
+      {inner}
+      {hovered && <HeatmapTooltip hovered={hovered} />}
     </div>
   );
 }
@@ -1056,6 +1124,98 @@ export function StatsView({
           width: 12px;
           height: 12px;
           border-radius: 2px;
+        }
+
+        /* ── Heatmap tooltip ─────────────────────────────────────────── */
+        .sv-heatmap-shell {
+          position: relative;
+        }
+
+        .sv-hm-tip {
+          position: absolute;
+          z-index: 30;
+          transform: translate(-50%, calc(-100% - 10px));
+          background: oklch(99% 0.006 62);
+          border: 1px solid oklch(82% 0.014 58);
+          border-radius: 6px;
+          padding: 9px 12px 8px;
+          min-width: 160px;
+          max-width: 260px;
+          box-shadow: 0 6px 18px oklch(22% 0.02 58 / 0.12),
+            0 2px 4px oklch(22% 0.02 58 / 0.06);
+          pointer-events: none;
+          font-family: "Hiragino Sans GB", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        }
+
+        .sv-hm-tip::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          bottom: -6px;
+          transform: translateX(-50%) rotate(45deg);
+          width: 10px;
+          height: 10px;
+          background: oklch(99% 0.006 62);
+          border-right: 1px solid oklch(82% 0.014 58);
+          border-bottom: 1px solid oklch(82% 0.014 58);
+          border-radius: 0 0 2px 0;
+        }
+
+        .sv-hm-tip-head {
+          font-family: "Hiragino Mincho ProN", "Source Han Serif CN",
+            "Noto Serif CJK SC", serif;
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: oklch(28% 0.025 58);
+          letter-spacing: 0.04em;
+          padding-bottom: 6px;
+          border-bottom: 1px solid oklch(91% 0.012 58);
+          margin-bottom: 6px;
+        }
+
+        .sv-hm-tip-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+
+        .sv-hm-tip-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.8125rem;
+          color: oklch(36% 0.020 58);
+          line-height: 1.4;
+        }
+
+        .sv-hm-tip-icon {
+          font-size: 0.95rem;
+          flex-shrink: 0;
+        }
+
+        .sv-hm-tip-name {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .sv-hm-tip-count {
+          flex-shrink: 0;
+          font-variant-numeric: tabular-nums;
+          color: oklch(46% 0.022 58);
+          font-size: 0.75rem;
+          letter-spacing: 0.02em;
+        }
+
+        .sv-hm-tip-empty {
+          font-size: 0.75rem;
+          color: oklch(56% 0.016 58);
+          font-style: italic;
         }
 
         /* ── Empty state ─────────────────────────────────────────────── */
