@@ -1,11 +1,25 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState, useMemo } from "react";
 import type { TaskStatsRow, StreakRow, HeatmapDay } from "@/lib/stats";
-import { colorBucket } from "@/lib/stats";
+import { colorBucket, computeHeatmap } from "@/lib/stats";
 import { CHINESE_MONTHS } from "@/lib/dates";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface OccurrenceSlim {
+  id: number;
+  taskId: number;
+  date: string;
+  count: number;
+}
+
+interface TaskSlim {
+  id: number;
+  name: string;
+  icon: string;
+}
 
 interface StatsViewProps {
   period: "year" | "month" | "week";
@@ -16,6 +30,8 @@ interface StatsViewProps {
   streaks: StreakRow[];
   heatmap: HeatmapDay[];
   todayKey: string;
+  occurrences: OccurrenceSlim[];
+  tasks: TaskSlim[];
 }
 
 // ── Color buckets ─────────────────────────────────────────────────────────────
@@ -501,8 +517,19 @@ export function StatsView({
   streaks,
   heatmap,
   todayKey,
+  occurrences,
+  tasks,
 }: StatsViewProps) {
   const router = useRouter();
+
+  // ── Heatmap filter state ──────────────────────────────────────────────────
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+
+  const filteredHeatmap = useMemo(() => {
+    if (selectedTaskId === null) return heatmap;
+    const filtered = occurrences.filter((o) => o.taskId === selectedTaskId);
+    return computeHeatmap(filtered, rangeStart, rangeEnd);
+  }, [selectedTaskId, occurrences, heatmap, rangeStart, rangeEnd]);
 
   function navigate(newPeriod: "year" | "month" | "week", anchor: string) {
     router.push(buildUrl(newPeriod, anchor));
@@ -874,6 +901,55 @@ export function StatsView({
           color: oklch(54% 0.018 58);
         }
 
+        /* ── Heatmap filter ─────────────────────────────────────────── */
+        .sv-heatmap-filter {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          margin-bottom: 14px;
+        }
+
+        .sv-heatmap-filter-label {
+          font-size: 0.8125rem;
+          color: oklch(50% 0.020 58);
+          letter-spacing: 0.03em;
+          white-space: nowrap;
+          cursor: default;
+          user-select: none;
+        }
+
+        .sv-heatmap-filter-select {
+          appearance: none;
+          -webkit-appearance: none;
+          padding: 4px 28px 4px 10px;
+          font-size: 0.8125rem;
+          font-family: inherit;
+          color: oklch(32% 0.025 58);
+          background-color: oklch(94% 0.010 62);
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23a08060' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 8px center;
+          border: 1px solid oklch(86% 0.014 58);
+          border-radius: 6px;
+          cursor: pointer;
+          outline: none;
+          transition: border-color 0.12s, background-color 0.12s;
+          max-width: 220px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .sv-heatmap-filter-select:hover {
+          border-color: oklch(72% 0.018 58);
+          background-color: oklch(91% 0.013 62);
+        }
+
+        .sv-heatmap-filter-select:focus-visible {
+          border-color: oklch(52% 0.12 38);
+          box-shadow: 0 0 0 2px oklch(52% 0.12 38 / 0.22);
+        }
+
         /* ── Heatmap ──────────────────────────────────────────────────── */
         .sv-heatmap-year {
           overflow-x: auto;
@@ -1074,7 +1150,30 @@ export function StatsView({
         {/* ── Heatmap ── */}
         <div className="sv-section">
           <SectionHead title="活跃日历" />
-          <Heatmap heatmap={heatmap} period={period} rangeStart={rangeStart} />
+          {tasks.length > 0 && (
+            <div className="sv-heatmap-filter">
+              <label htmlFor="heatmap-task-select" className="sv-heatmap-filter-label">
+                看：
+              </label>
+              <select
+                id="heatmap-task-select"
+                className="sv-heatmap-filter-select"
+                value={selectedTaskId ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedTaskId(v === "" ? null : Number(v));
+                }}
+              >
+                <option value="">全部事件</option>
+                {tasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.icon} {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <Heatmap heatmap={filteredHeatmap} period={period} rangeStart={rangeStart} />
           <HeatmapLegend />
         </div>
       </div>

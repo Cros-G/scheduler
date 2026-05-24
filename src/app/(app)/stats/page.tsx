@@ -118,6 +118,21 @@ export default async function StatsPage({
 
   const heatmap = computeHeatmap(rangedOccurrences, rangeStart, rangeEnd);
 
+  // Minimal occurrence shape for client-side heatmap filtering
+  const occurrencesForClient = rangedOccurrences.map((o) => ({
+    id: o.id,
+    taskId: o.taskId,
+    date: o.date,
+    count: o.count,
+  }));
+
+  // Minimal task shape for the filter dropdown
+  const tasksForClient = tasks.map((t) => ({
+    id: t.id,
+    name: t.name,
+    icon: t.icon,
+  }));
+
   return (
     <StatsView
       period={period}
@@ -128,6 +143,8 @@ export default async function StatsPage({
       streaks={streaks}
       heatmap={heatmap}
       todayKey={currentTodayKey}
+      occurrences={occurrencesForClient}
+      tasks={tasksForClient}
     />
   );
 }

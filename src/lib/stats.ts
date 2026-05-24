@@ -192,7 +192,7 @@ export function computeStreaks(
 // ── computeHeatmap ────────────────────────────────────────────
 
 export function computeHeatmap(
-  occurrences: Occurrence[],
+  occurrences: { date: string; count: number }[],
   rangeStart: string,
   rangeEnd: string
 ): HeatmapDay[] {
