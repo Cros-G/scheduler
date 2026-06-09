@@ -5,6 +5,30 @@ import { validateSession } from "./session";
 
 export const SESSION_COOKIE = "scheduler_session";
 
+/**
+ * Decide whether to set the `Secure` flag on the session cookie.
+ *
+ * Priority:
+ *   1. Explicit env override: COOKIE_SECURE=true|false
+ *   2. Auto-detect from the request: X-Forwarded-Proto (reverse proxy) or req.url protocol
+ *
+ * This decouples cookie-Secure behavior from NODE_ENV, so a plain HTTP deployment
+ * (e.g. self-host on IP:port without HTTPS) won't have its login cookie silently
+ * dropped by the browser, while an HTTPS deployment behind a proxy still gets Secure.
+ */
+export function shouldSetSecureCookie(req: Request): boolean {
+  const override = process.env.COOKIE_SECURE;
+  if (override === "true") return true;
+  if (override === "false") return false;
+  const xfproto = req.headers.get("x-forwarded-proto");
+  if (xfproto) return xfproto.split(",")[0].trim() === "https";
+  try {
+    return new URL(req.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export async function getCurrentUser(): Promise<User | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;

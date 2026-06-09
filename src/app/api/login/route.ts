@@ -2,7 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 import { createSession, SESSION_DURATION_MS } from "@/lib/session";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, shouldSetSecureCookie } from "@/lib/auth";
 
 const Body = z.object({
   username: z.string().min(1).max(50),
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     `Max-Age=${SESSION_DURATION_MS / 1000}`,
     "SameSite=Lax",
   ];
-  if (process.env.NODE_ENV === "production") cookieParts.push("Secure");
+  if (shouldSetSecureCookie(req)) cookieParts.push("Secure");
   headers.append("Set-Cookie", cookieParts.join("; "));
   return redirectTo("/", headers);
 }
